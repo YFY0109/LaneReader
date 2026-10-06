@@ -1,0 +1,12 @@
+# Line-ending conversion is disabled for the whole repo, on purpose.
+#
+# Several files here are encoding-sensitive (see HANDOFF.md 6.12):
+#
+#   * the .ps1 scripts carry a UTF-8 BOM - without it Windows PowerShell decodes
+#     them as GBK, truncates the Chinese strings and fails to parse;
+#   * launch-adofai-hidden.vbs is UTF-16LE;
+#   * the .cs sources are handed straight to csc.exe.
+#
+# `* -text` stores every blob byte-for-byte and never rewrites endings on
+# checkout. Diff still works normally; only normalisation is off.
+* -text

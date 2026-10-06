@@ -1,0 +1,7 @@
+{
+  "Id": "LaneReader",
+  "DisplayName": "LaneReader (4K view)",  "Author": "local",
+  "Version": "0.1.0",
+  "AssemblyName": "LaneReader.dll",
+  "EntryMethod": "LaneReader.Plugin.Load"
+}
