@@ -209,9 +209,33 @@ bool restarted = _sawRunEnd && !ended;
 
 `.vbs` 必须存成 **UTF-16LE**。
 
+### 6.13 「按任意键开始」不能用 `hasSongStarted` 判断
+
+**现象**：关卡加载完、还没按键，音符已经在下落。
+
+**原因**：旧的门控用 `scrConductor.hasSongStarted` 区分「按任意键」和「321 倒计时」，
+但那个标志在同一局游戏的第二个关卡时已经是 true，区分不出来 → 那一屏也在滚谱。
+
+**正确做法：用时钟本身。** 那一屏的 `songposition_minusi` 要么停在上一局的位置，要么
+还在往 0 之前预滚 —— 两种情况都落在「时钟没在往正方向走」或「时钟 < 0」里。
+`ChartReader.TimelineLive()` 就是这两条的合取：`_clockMoved`（在 `AdvanceRenderClock`
+里比较前后帧）为真，且 `SongPosition() >= 0`。冻结、时钟为负、谱面重建都会清掉它。
+
+诊断日志为此加了字段：`state=` / `song=` / `live=` / `frame=` / `notes=` —— 下次再出
+这类问题，先看这五个值，不要猜。
+
 ---
 
-## 7. 显示门控（`Playing()`）
+## 7. 显示门控：两道门
+
+渲染拆成两半，各有各的门（`Plugin.Draw` / `Plugin.NotesVisible`）：
+
+| 半 | 门 |
+|---|---|
+| 静态框（轨道 / 判定线 / 判定框 / 键位标签） | `ChartReader.LevelStanding()` |
+| 音符 | `LevelStanding() && Playing() && TimelineLive()` |
+
+`Playing()` —— 音符「在打歌状态里」：
 
 ```csharp
 1. ctrl.paused                          → 关
@@ -222,14 +246,21 @@ bool restarted = _sawRunEnd && !ended;
 6. 其他                                  → 关
 ```
 
-| 场景 | 显示 |
-|---|---|
-| 主菜单 / 编辑器编辑中 | 关 |
-| 「按任意键开始」 | **关**（state 已是 Countdown，但 `hasSongStarted` 为 false） |
-| 倒计时 321 | **开** |
-| 打歌中 | 开 |
-| 暂停 / 死亡 / 通关 | 关 |
-| 编辑器测试播放 | 开 |
+`LevelStanding()` —— 框「关卡立着」：`IsFrozen()` → 关；编辑器播放 → 开；
+state ∈ {Start, Countdown, PlayerControl, Checkpoint} → 开；其他 → 关。
+
+`TimelineLive()` —— 音符「时间轴真的在走」：见 6.13。
+
+| 场景 | 框 | 音符 |
+|---|---|---|
+| 主菜单 / 编辑器编辑中 | 关 | 关 |
+| 「按任意键开始」 | **开** | **关**（时钟停在上一局位置 / 还没到 0） |
+| 倒计时 321 | 开 | 开 |
+| 打歌中 | 开 | 开 |
+| 暂停 / 死亡 / 通关 | 关 | 关 |
+| 编辑器测试播放 | 开 | 开 |
+
+> 旧版这里写的是「按任意键开始 → 关」，靠 `hasSongStarted`。已作废，原因见 6.13。
 
 ---
 

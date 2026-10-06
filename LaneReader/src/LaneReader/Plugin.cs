@@ -287,8 +287,9 @@ namespace LaneReader
             if (log)
             {
                 float refScale = Mathf.Max(0.5f, Screen.height / 1080f);
+                bool frame = Chart.LevelStanding();
                 Logger.Log("frame: " + Chart.FrameDiag(Cfg.NoteSpeedPxPerSec * refScale,
-                    Screen.height, frozen));
+                    Screen.height, frozen, frame, NotesVisible(frame)));
             }
 
             // Re-plan only when a fingering input actually changed, not every frame.
@@ -330,6 +331,24 @@ namespace LaneReader
         }
 
         /// <summary>
+        /// The overlay has two halves, and they have two different gates.
+        ///
+        ///   * the static frame - lanes, judgement line, boxes, key labels - is wanted as soon as
+        ///     a level is up, including the "press any key to start" prompt a fresh level opens
+        ///     with, so it only needs the level to be standing;
+        ///   * the notes belong to a run that is actually under way, so they additionally need a
+        ///     playing state and a live clock. Drawing them at the prompt scrolled the chart past
+        ///     the player before they had pressed anything.
+        ///
+        /// Together the two gates are what keep the overlay off the menus, the level editor, the
+        /// pause menu and the death screen.
+        /// </summary>
+        private static bool NotesVisible(bool frame)
+        {
+            return frame && Chart.Playing() && Chart.TimelineLive();
+        }
+
+        /// <summary>
         /// Called from the Harmony postfix on AsyncInputManager.OnGUI. The game has already
         /// begun full-screen IMGUI by that point, so plain screen coordinates are correct.
         /// </summary>
@@ -338,11 +357,12 @@ namespace LaneReader
             if (Cfg == null || !Cfg.Enabled || _hidden)
                 return;
 
-            // Only while a level is actually being played. This is what keeps the overlay off the
-            // menus, the level editor, the pause menu and the death screen.
-            bool playing = Chart.Playing();
-            Chart.NotePlayState(playing);
-            if (!Chart.Ready || !playing)
+            // Only while a level is up. See NotesVisible: the frame is drawn on the pre-start
+            // prompt, the notes are not.
+            bool frame = Chart.LevelStanding();
+            bool notes = NotesVisible(frame);
+            Chart.NotePlayState(notes);
+            if (!Chart.Ready || !frame)
                 return;
 
             if (Event.current != null && Event.current.type != EventType.Repaint)
@@ -351,7 +371,7 @@ namespace LaneReader
             _originalFont = GUI.skin.font;
             try
             {
-                DrawOverlay();
+                DrawOverlay(notes);
             }
             catch (Exception ex)
             {
@@ -367,7 +387,11 @@ namespace LaneReader
             }
         }
 
-        private static void DrawOverlay()
+        /// <summary>
+        /// Draws the overlay. The frame is always drawn; <paramref name="drawNotes"/> is false on
+        /// the "press any key to start" prompt, where only the frame is wanted.
+        /// </summary>
+        private static void DrawOverlay(bool drawNotes)
         {
             float refScale = Mathf.Max(0.5f, Screen.height / 1080f);
             float w = Screen.width;
@@ -439,7 +463,8 @@ namespace LaneReader
                 }
             }
 
-            if (!Chart.Ready || Chart.Count == 0)
+            // Frame only: the pre-start prompt stops here.
+            if (!drawNotes || !Chart.Ready || Chart.Count == 0)
                 return;
 
             double now = Chart.RenderTime() + Cfg.TimeOffsetSeconds;

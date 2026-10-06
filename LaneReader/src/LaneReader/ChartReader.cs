@@ -99,6 +99,15 @@ namespace LaneReader
         /// <summary>States before the music starts. Notes must not be drawn here.</summary>
         private static readonly string[] PreSongStates = { "None", "Start", "Checkpoint", "Countdown" };
 
+        /// <summary>
+        /// States in which a level is loaded and the overlay's static frame belongs on screen.
+        ///
+        /// "Countdown" covers both the 3-2-1 before a checkpoint resume and the "press any key
+        /// to start" prompt a fresh level opens with. The frame is wanted on both; the notes are
+        /// not, and they are gated separately - see <see cref="TimelineLive"/>.
+        /// </summary>
+        private static readonly string[] StandingStates = { "Start", "Countdown", "PlayerControl", "Checkpoint" };
+
         private bool _reflectionReady;
         private bool _reflectionFailed;
         private string _diagnostic = "not initialised";
@@ -123,6 +132,13 @@ namespace LaneReader
         private int _generation;
         private double _frozenAt = double.NaN;
         private double _previousRaw = double.NaN;
+
+        /// <summary>
+        /// True once the game's clock has been seen to move since this chart was set up. A clock
+        /// that never moves is not a timeline the notes can be positioned against - see
+        /// <see cref="TimelineLive"/>.
+        /// </summary>
+        private bool _clockMoved;
 
         private double _displayTime;
         private bool _displayTimeValid;
@@ -177,6 +193,7 @@ namespace LaneReader
             _lastFloorCount = -1;
             _firstHitTime = 0.0;
             _lastHitTime = 0.0;
+            _clockMoved = false;
         }
 
         // ------------------------------------------------------------ reflection setup
@@ -393,8 +410,12 @@ namespace LaneReader
         /// <paramref name="pxPerSecond"/> is the on-screen fall speed, so the visible count is
         /// computed the same way the renderer culls: a note is on screen while its travel time
         /// from the line is under the time it takes to cross the whole screen.
+        ///
+        /// <paramref name="frame"/> and <paramref name="notes"/> are the two render gates the
+        /// caller used this frame, echoed here so a log always says what the screen showed.
         /// </summary>
-        public string FrameDiag(float pxPerSecond, float screenHeight, bool frozen)
+        public string FrameDiag(float pxPerSecond, float screenHeight, bool frozen,
+            bool frame, bool notes)
         {
             double now = DrawTime();
             double win = pxPerSecond > 1f ? screenHeight / pxPerSecond : 3.0;
@@ -417,9 +438,12 @@ namespace LaneReader
                 : "none ahead";
 
             return string.Format(
-                "t={0:F3}s raw={1:F3}s win={2:F3}s onscreen={3} {4} frozen={5} | seq={6} drawable={7}/{8}",
+                "t={0:F3}s raw={1:F3}s win={2:F3}s onscreen={3} {4} frozen={5} | " +
+                "seq={6} drawable={7}/{8} | state={9} song={10} live={11} frame={12} notes={13}",
                 now, SongPosition(), win, onScreen, next, frozen,
-                CurrentSeqId(), drawable, _notes.Count);
+                CurrentSeqId(), drawable, _notes.Count,
+                CurrentState(), SongRunning() ? 1 : 0, TimelineLive() ? 1 : 0,
+                frame ? 1 : 0, notes ? 1 : 0);
         }
 
         /// <summary>
@@ -549,6 +573,47 @@ namespace LaneReader
         }
 
         /// <summary>
+        /// True while a level is loaded and its static frame belongs on screen: the lanes, the
+        /// judgement line and the boxes. This is the overlay's outer gate, and it deliberately
+        /// includes the "press any key to start" prompt, where the chart is already built but
+        /// the run has not begun.
+        ///
+        /// False in the menus, in the editor outside play mode, and while paused, dead or
+        /// finished - the states in which the overlay must disappear entirely.
+        /// </summary>
+        public bool LevelStanding()
+        {
+            if (IsFrozen())
+                return false;
+            if (EditorPlaying())
+                return true;
+
+            string state = CurrentState();
+            for (int i = 0; i < StandingStates.Length; i++)
+            {
+                if (state == StandingStates[i])
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// True once this attempt's note timeline is live: the game's clock has moved on from
+        /// where it stood when the chart was set up, and has reached the chart's own zero.
+        ///
+        /// This is what keeps the notes off the "press any key to start" prompt. The prompt
+        /// leaves <c>scrConductor.songposition_minusi</c> holding the previous attempt's
+        /// position - or pre-rolling towards zero - while scrController already reports a state
+        /// the notes are allowed in, so the clock is the dependable signal here. The conductor's
+        /// hasSongStarted flag does not separate the two: the notes were still being drawn at
+        /// the prompt, which means that flag already reads true by then.
+        /// </summary>
+        public bool TimelineLive()
+        {
+            return _clockMoved && SongPosition() >= 0.0;
+        }
+
+        /// <summary>
         /// True while the level editor is in its built-in play mode. scnEditor is a singleton,
         /// and playMode is false whenever the editor is being used to build rather than test.
         /// </summary>
@@ -650,6 +715,7 @@ namespace LaneReader
             _cleared.Clear();
             _frozenAt = double.NaN;
             _previousRaw = double.NaN;
+            _clockMoved = false;
             _runStartSeqId = -1;
         }
 
@@ -679,6 +745,14 @@ namespace LaneReader
                 _displayTime = raw;
                 _displayTimeValid = true;
             }
+
+            // Liveness, for TimelineLive: a clock that is held - paused, dead, or sitting on the
+            // level's opening prompt with the previous attempt's position - is not a timeline,
+            // and neither is one still pre-rolling towards the chart's zero.
+            if (frozen || raw < 0.0)
+                _clockMoved = false;
+            else if (!double.IsNaN(_previousRaw) && Math.Abs(raw - _previousRaw) > 1e-6)
+                _clockMoved = true;
 
             _previousRaw = raw;
             return _displayTimeValid ? _displayTime : raw;
