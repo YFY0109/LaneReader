@@ -408,9 +408,10 @@ namespace LaneReader
             }
 
             Logger.Log(string.Format(
-                "hand split: {0} notes, bpm {1:F1} ({2}){3}, {4}, {5}, rolls {6}, taps {7}",
+                "hand split: {0} notes, bpm {1:F1} ({2}){3}, {4}, {5}, rolls {6} taps {7} hand switches {8}",
                 n, bpm, source, bpm > 0.0 ? "" : " - unusable, plan is a guess", plan.Summary,
-                Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps));
+                Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps,
+                CountHandSwitches(plan)));
         }
 
         // ------------------------------------------------------------------ drawing
@@ -741,6 +742,22 @@ namespace LaneReader
                     hi = mid;
             }
             return lo;
+        }
+
+        /// <summary>
+        /// How often the plan changes hands between windows - the number that says whether a chart
+        /// is being played with one hand at a time or with both, and therefore the quickest way to
+        /// see what the hard-resist limit is doing.
+        /// </summary>
+        private static int CountHandSwitches(HandPlan plan)
+        {
+            int switches = 0;
+            for (int i = 1; i < plan.WindowPreferred.Count; i++)
+            {
+                if (plan.WindowPreferred[i] != plan.WindowPreferred[i - 1])
+                    switches++;
+            }
+            return switches;
         }
 
         /// <summary>
