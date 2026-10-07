@@ -244,34 +244,43 @@ bool restarted = _sawRunEnd && !ended;
 | 半 | 门 |
 |---|---|
 | 静态框（轨道 / 判定线 / 判定框 / 键位标签） | `ChartReader.LevelStanding()` |
-| 音符 | `LevelStanding() && Playing() && TimelineLive()` |
+| 音符 | `LevelStanding() && TimelineLive() && SongRunning()` |
 
-`Playing()` —— 音符「在打歌状态里」：
+> **音符那一道门为什么是这三项**（2026-10-07 实机两次踩坑的结论）：
+> - `LevelStanding()`：关卡立着（死亡/通关/菜单/编辑器编辑 → 关）
+> - `TimelineLive()`：时间轴动过（挡掉"时钟还停在上一局位置"的新谱面）
+> - `SongRunning()`：**音乐真的开始了** —— 这是最后加的一项，也是关键的一项
+>
+> 用 `Playing()`（状态表）判过两次，都不行：暂停时游戏把状态报成 `Start`，
+> 而"按任意键开始"那屏**也是** `Start`，状态表分不开这两者 ✗。日志把它们并排摆出来了：
+>
+> ```
+> 暂停：        state=Start song=1 live=1 -> 要画（音符停在原地）
+> 按任意键开始：state=Start song=0 live=1 -> 不能画
+> ```
+> `song`（= `scrConductor.hasSongStarted`）一分就开。`Playing()` 现在只剩日志用途。
 
-```csharp
-1. ctrl.paused                          → 关
-2. scnEditor.instance.playMode          → 开（编辑器测试播放）
-3. state ∈ {Fail, Fail2, Won}           → 关（死亡/通关）
-4. state ∈ {PlayerControl, Checkpoint}  → 开
-5. state == Countdown && hasSongStarted → 开（倒计时 321）
-6. 其他                                  → 关
-```
-
-`LevelStanding()` —— 框「关卡立着」：`IsFrozen()` → 关；编辑器播放 → 开；
+`LevelStanding()` —— 框「关卡立着」：`RunEnded()` → 关（死亡/通关）；编辑器播放 → 开；
 state ∈ {Start, Countdown, PlayerControl, Checkpoint} → 开；其他 → 关。
+**注意它不再看 `IsFrozen()`**：暂停时框要留着（`IsFrozen` 仍然喂给时钟冻结那一路）。
 
 `TimelineLive()` —— 音符「时间轴真的在走」：见 6.13。
 
 | 场景 | 框 | 音符 |
 |---|---|---|
 | 主菜单 / 编辑器编辑中 | 关 | 关 |
-| 「按任意键开始」 | **开** | **关**（时钟停在上一局位置 / 还没到 0） |
+| 「按任意键开始」 | **开** | **关**（song=0） |
 | 倒计时 321 | 开 | 开 |
 | 打歌中 | 开 | 开 |
-| 暂停 / 死亡 / 通关 | 关 | 关 |
+| 暂停 | **开** | **开**（音符停在原地） |
+| 死亡 / 通关 | 关 | 关 |
 | 编辑器测试播放 | 开 | 开 |
 
-> 旧版这里写的是「按任意键开始 → 关」，靠 `hasSongStarted`。已作废，原因见 6.13。
+> **历史**：6.13 那次得出的结论是「不能用 `hasSongStarted` 区分开局提示」，于是这一屏改由
+> 时钟（`TimelineLive`）来挡。后来为了让暂停保留音符，把 `Playing()` 从门控里去掉，
+> 结果重试时的开局提示又把音符放了出来 —— 因为 `TimelineLive` 在**重试**时不会清零
+> （没有重建谱面）。最后成型的判据是三项合取，`song` 只负责"音乐开没开始"这一件事，
+> 正好把暂停和开局提示分开（见上表）。
 
 ---
 

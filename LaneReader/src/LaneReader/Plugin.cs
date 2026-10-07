@@ -445,24 +445,26 @@ namespace LaneReader
         /// <summary>
         /// The overlay has two halves, and they have two different gates.
         ///
-        ///   * the static frame - lanes, judgement line, boxes, key labels - is wanted as soon as
-        ///     a level is up, including the "press any key to start" prompt a fresh level opens
-        ///     with, so it only needs the level to be standing;
-        ///   * the notes belong to a run that is under way, which is what <see cref="ChartReader.TimelineLive"/>
-        ///     says: the clock has moved at least once since the chart was set up.
+        ///   * the static frame - lanes, judgement line, boxes, key labels - is wanted as soon as a
+        ///     level is up, including the "press any key to start" prompt a fresh level opens with,
+        ///     so it only needs the level to be standing;
+        ///   * the notes belong to a run that is under way, which takes two things:
+        ///     <see cref="ChartReader.TimelineLive"/> (the clock has moved since the chart was set up)
+        ///     and <see cref="ChartReader.SongRunning"/> (the music has actually begun).
         ///
-        /// The notes deliberately do NOT go through ChartReader.Playing() as well. That test only
-        /// accepts the PlayerControl/Checkpoint/Countdown states, and a paused game reports
-        /// "Start" - so pausing hid the notes even though the frame stayed. A log line from a real
-        /// session caught it: "state=Start song=1 live=1 frame=1 notes=0". The clock is still held
-        /// while paused, so the notes simply stop where they are, which is the whole point.
+        /// Neither of those is a state test, and that is on purpose. ChartReader.Playing() is: it
+        /// accepts only PlayerControl/Checkpoint/Countdown, and the game reports "Start" both while
+        /// paused and while waiting for the first key press. Gating on it hid the notes when the
+        /// player paused to look at the chart (log: "state=Start song=1 live=1 frame=1 notes=0"),
+        /// and dropping it let a retry's prompt show notes (log: "state=Start song=0 live=1 ... notes=1").
+        /// The conductor's own flag separates those two cases exactly.
         ///
         /// Together the two gates are what keep the overlay off the menus, the level editor, the
         /// death screen and the pre-start prompt.
         /// </summary>
         private static bool NotesVisible(bool frame)
         {
-            return frame && Chart.TimelineLive();
+            return frame && Chart.TimelineLive() && Chart.SongRunning();
         }
 
         /// <summary>
