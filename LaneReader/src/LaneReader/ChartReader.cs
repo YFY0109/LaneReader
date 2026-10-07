@@ -878,6 +878,53 @@ namespace LaneReader
         }
 
         /// <summary>
+        /// A beat length guessed from the chart's own note spacing, for when the game will not
+        /// hand its BPM over.
+        ///
+        /// ADOFAI places notes on beat subdivisions, so the most common gap is a subdivision of a
+        /// beat; that gap is then doubled until it lands where a musical beat lives (250 ms to
+        /// 1 s, i.e. 60-240 BPM). It is a guess - the beat-grid log line says when this is what is
+        /// being used, and the settings panel takes a manual BPM instead.
+        /// </summary>
+        public double EstimatedBeatSeconds()
+        {
+            if (_notes.Count < 8)
+                return 0.0;
+
+            var buckets = new Dictionary<long, int>();
+            for (int i = 0; i + 1 < _notes.Count; i++)
+            {
+                double gap = _notes[i + 1].HitTime - _notes[i].HitTime;
+                if (gap <= 0.0005)
+                    continue;                                  // a chord, not a spacing
+                long bucket = (long)Math.Round(gap * 200.0) * 5;   // 5 ms buckets
+                int seen;
+                buckets.TryGetValue(bucket, out seen);
+                buckets[bucket] = seen + 1;
+            }
+            if (buckets.Count == 0)
+                return 0.0;
+
+            long common = 0;
+            int best = -1;
+            foreach (KeyValuePair<long, int> kv in buckets)
+            {
+                if (kv.Value > best)
+                {
+                    best = kv.Value;
+                    common = kv.Key;
+                }
+            }
+
+            double beat = common / 1000.0;
+            while (beat > 0.0001 && beat < 0.25)
+                beat *= 2.0;
+            while (beat > 1.0)
+                beat /= 2.0;
+            return beat;
+        }
+
+        /// <summary>
         /// The game's own position in the chart (scrController.currentSeqID). This is what tells
         /// us which tiles have been played, and it is the only reliable signal: scrFloor.grade
         /// initialises to TooEarly (0), not to a "not judged" sentinel, so a grade-based test

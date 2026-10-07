@@ -144,8 +144,8 @@ namespace LaneReader
             Slider("轨道宽度 (px)", ref Cfg.LaneWidthPx, 40f, 400f, "F0");
             Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
             Slider("判定线高度", ref Cfg.JudgeLineY, 0f, 1f, "F2");
-            Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -600f, 600f, "F0");
-            Slider("垂直偏移 (px)", ref Cfg.OffsetYPx, -400f, 400f, "F0");
+            Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
+            Slider("垂直偏移 (px)", ref Cfg.OffsetYPx, -800f, 800f, "F0");
             Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 0.5f, "F3");
             Space();
 
@@ -203,6 +203,13 @@ namespace LaneReader
             _showAppearance = Fold("外观", _showAppearance);
             if (_showAppearance)
             {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("背景明暗", GUILayout.Width(140f));
+                if (GUILayout.Button(Cfg.LightBackground ? "亮背景（黑线）" : "暗背景（白线）",
+                        GUILayout.Width(160f)))
+                    Cfg.LightBackground = !Cfg.LightBackground;
+                GUILayout.EndHorizontal();
+
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("配色 " + (Cfg.ColourPreset + 1) + "/" + Palette.Length, GUILayout.Width(140f));
                 if (GUILayout.Button("下一个", GUILayout.Width(80f)))
@@ -368,11 +375,12 @@ namespace LaneReader
             if (log && Cfg.ShowBeatLines && _beatLogGeneration != Chart.Generation)
             {
                 _beatLogGeneration = Chart.Generation;
-                double bpm = Cfg.BeatBpm > 0.01f ? Cfg.BeatBpm : Chart.LevelBpm();
+                double seconds = BeatSeconds();          // also records the source it used
                 Logger.Log(string.Format(
-                    "beat grid: {0:F1} bpm ({1}), {2:F1} ms/beat, {3} beats/bar, phase {4:F2}",
-                    bpm, Cfg.BeatBpm > 0.01f ? "manual" : "chart",
-                    bpm > 0.0 ? 60000.0 / bpm : 0.0, Cfg.BeatsPerBar, Cfg.BeatPhaseBeats));
+                    "beat grid: {0:F1} ms/beat from {1} (game bpm {2:F1}, manual {3:F0}), " +
+                    "{4} beats/bar, phase {5:F2}",
+                    seconds > 0.0 ? seconds * 1000.0 : 0.0, _beatSource,
+                    Chart.LevelBpm(), Cfg.BeatBpm, Cfg.BeatsPerBar, Cfg.BeatPhaseBeats));
             }
         }
 
@@ -523,8 +531,8 @@ namespace LaneReader
             // ---- lanes ----------------------------------------------------------
             if (Cfg.ShowLanes)
             {
-                var body = new Color(1f, 1f, 1f, Cfg.LaneOpacity);
-                var edge = new Color(1f, 1f, 1f, 0.28f);
+                Color body = Ink(Cfg.LaneOpacity);
+                Color edge = Ink(0.28f);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
                     float x = x0 + i * (laneW + laneGap);
@@ -545,8 +553,7 @@ namespace LaneReader
 
             // ---- judgement line -------------------------------------------------
             if (Cfg.ShowJudgeLine)
-                Fill(new Rect(0f, judgeY, w, Mathf.Max(2f, 3f * refScale)),
-                    new Color(1f, 1f, 1f, 0.85f));
+                Fill(new Rect(0f, judgeY, w, Mathf.Max(2f, 3f * refScale)), Ink(0.85f));
 
             // ---- key labels -----------------------------------------------------
             // Never change GUI.skin.font here: the panel text has to stay on the game's own font.
@@ -555,7 +562,7 @@ namespace LaneReader
                 var label = new GUIStyle(GUI.skin.label);
                 label.fontSize = Mathf.RoundToInt(18f * refScale);
                 label.alignment = TextAnchor.LowerCenter;
-                label.normal.textColor = new Color(1f, 1f, 1f, 0.75f);
+                label.normal.textColor = Ink(0.75f);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
                     float x = x0 + i * (laneW + laneGap);
@@ -571,7 +578,7 @@ namespace LaneReader
             if (Cfg.ShowJudgeBoxes)
             {
                 float t = Mathf.Max(2f, 2f * refScale);
-                var box = new Color(1f, 1f, 1f, 0.22f);
+                Color box = Ink(0.22f);
                 float top = judgeY - noteH * 0.5f;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
@@ -672,8 +679,23 @@ namespace LaneReader
                 return;
             }
 
-            Fill(r, new Color(c.r * 0.35f, c.g * 0.35f, c.b * 0.35f, c.a));
+            // The opposite of the background rather than a darker shade of the note: on a dark
+            // level the outline is white, on a light one black, so a note always separates from
+            // whatever is behind it and from its neighbours.
+            Fill(r, Ink(c.a));
             Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
+        }
+
+        /// <summary>
+        /// The overlay's neutral colour: white ink on a dark level, black ink on a light one. Every
+        /// part that is not a note colour goes through here, which is what makes the light/dark
+        /// switch a single setting.
+        /// </summary>
+        private static Color Ink(float alpha)
+        {
+            return Cfg.LightBackground
+                ? new Color(0f, 0f, 0f, alpha)
+                : new Color(1f, 1f, 1f, alpha);
         }
 
         /// <summary>
@@ -709,7 +731,7 @@ namespace LaneReader
                 float alpha = bar ? Mathf.Min(1f, Cfg.BeatLineAlpha * 1.8f) : Cfg.BeatLineAlpha;
 
                 float y = boxBottom - (float)((k * beat + phase - now) * speed);
-                Fill(new Rect(left, y, width, thick), new Color(1f, 1f, 1f, alpha));
+                Fill(new Rect(left, y, width, thick), Ink(alpha));
             }
         }
 
@@ -720,11 +742,28 @@ namespace LaneReader
         /// </summary>
         private static double BeatSeconds()
         {
-            double bpm = Cfg.BeatBpm > 0.01f ? Cfg.BeatBpm : Chart.LevelBpm();
+            double bpm = Cfg.BeatBpm;
+            string source = "manual";
+            if (bpm <= 0.01f)
+            {
+                bpm = Chart.LevelBpm();
+                source = "chart";
+            }
+            if (bpm < 20.0 || bpm > 1000.0)
+            {
+                double estimated = Chart.EstimatedBeatSeconds();
+                bpm = estimated > 0.0001 ? 60.0 / estimated : 0.0;
+                source = "estimated";
+            }
+
+            _beatSource = source;
             if (bpm < 20.0 || bpm > 1000.0)
                 return 0.0;
             return 60.0 / bpm;
         }
+
+        /// <summary>Which source <see cref="BeatSeconds"/> last used, for the log.</summary>
+        private static string _beatSource = "none";
 
         // ------------------------------------------------------------------ logging
 

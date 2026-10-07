@@ -80,6 +80,14 @@ namespace LaneReader
         /// <summary>Draw the beat lines across the whole screen instead of only across the lanes.</summary>
         public bool BeatLineFullWidth = true;
 
+        /// <summary>
+        /// True when the level's background is light: the overlay's neutral parts (lanes, judgement
+        /// line, boxes, labels, beat lines) are then drawn in black instead of white, and note
+        /// outlines take the opposite end of that scale so they still separate a note from what is
+        /// behind it.
+        /// </summary>
+        public bool LightBackground = false;
+
         public float TimeOffsetSeconds = 0f;
 
         /// <summary>
