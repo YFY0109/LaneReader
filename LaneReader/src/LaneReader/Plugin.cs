@@ -180,8 +180,8 @@ namespace LaneReader
 
                 if (Cfg.FingeringMode == 1)
                 {
-                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 300f, 1200f, "F0");
-                    GUILayout.Label("越低窗口越短 → 越偏换手/轮指（默认 840 = 参考实现；600 以下明显更轮）");
+                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
+                    GUILayout.Label("超过它就减半一次窗口（参考实现原样；越低越偏轮指）");
                     GUILayout.BeginHorizontal();
                     GUILayout.Label("轮指方向", GUILayout.Width(200f));
                     if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
@@ -394,8 +394,12 @@ namespace LaneReader
             for (int i = 0; i < notes.Count; i++)
                 times.Add(notes[i].HitTime);
 
-            string source;
-            double bpm = ChartBpm(out source);
+            // The original port's source, and deliberately so. scrLevelMaker.bpm_forUnityUseOnly is
+            // not readable on this install, so this hands HandPlanner a 0 and leaves its own fallback
+            // in charge - which normalises to 800 BPM, and that is the fingering the player knows:
+            // almost every note lands in the "hand over" band, and dense passages roll.
+            // Substituting a BPM guessed from the note spacing here silently re-scaled every chart.
+            double bpm = Chart.LevelBpm();
             HandPlan plan = HandPlanner.Assign(times, bpm, Cfg.MaxHardResistBpm,
                 2, Cfg.OuterRoll);
 
@@ -408,8 +412,8 @@ namespace LaneReader
             }
 
             Logger.Log(string.Format(
-                "hand split: {0} notes, bpm {1:F1} ({2}){3}, {4}, {5}, rolls {6} taps {7} hand switches {8}",
-                n, bpm, source, bpm > 0.0 ? "" : " - unusable, plan is a guess", plan.Summary,
+                "hand split: {0} notes, level bpm {1:F1}{2}, {3}, {4}, rolls {5}, taps {6} hand switches {7}",
+                n, bpm, bpm > 0.0 ? "" : " (unreadable!)", plan.Summary,
                 Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps,
                 CountHandSwitches(plan)));
         }
