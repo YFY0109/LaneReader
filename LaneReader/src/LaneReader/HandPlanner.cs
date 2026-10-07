@@ -272,8 +272,23 @@ namespace LaneReader
                 bpm *= 2.0;
             while (bpm > 1100.0)
                 bpm /= 2.0;
-            if (maxHardResistBpm > 0.0 && bpm > maxHardResistBpm)
+
+            // A hair over the limit must not count as over it. Charts whose tempo lands exactly on
+            // the limit fall in this trap: 210 BPM normalises to 840, which is the default limit, so
+            // a reading of 210.5 would drop a whole octave and double every window - and with it the
+            // fingering changes completely. Measured: 210.0 -> 840, 210.5 -> 421. One BPM of slack is
+            // below anything a slider can express and far below any real difference between charts.
+            if (maxHardResistBpm > 0.0 && bpm > maxHardResistBpm + 1.0)
                 bpm /= 2.0;
+
+            // The limit then scales the windows continuously. On its own the octave drop above is a
+            // cliff that only ever fires once - on a 220 BPM chart every setting from 400 to 840
+            // halves it to 440 and the slider does nothing at all, which is worse than useless on a
+            // control the player is supposed to tune by feel. Scaling the other way makes "lower =
+            // rolls more" true across the whole range, and at the default limit the factor is 1, so
+            // the reference's own behaviour is what runs.
+            if (maxHardResistBpm > 0.0)
+                bpm *= maxHardResistBpm / DefaultMaxHardResistBpm;
             return bpm;
         }
     }

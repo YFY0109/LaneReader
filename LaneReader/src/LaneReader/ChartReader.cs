@@ -1086,6 +1086,17 @@ namespace LaneReader
             return bpm * SongPitch() * PlanetSpeed();
         }
 
+        /// <summary>
+        /// The level's BPM as scrConductor reports it - the same field JipperResourcePack builds
+        /// TBPM from (TBPM is this times the song pitch times the planet speed). It is the tempo
+        /// the chart's speed events multiply, i.e. what the reference macro reads as settings.bpm,
+        /// and unlike scrLevelMaker.bpm_forUnityUseOnly it is known to be readable here.
+        /// </summary>
+        public double ConductorBpm()
+        {
+            return ReadConductorBpm();
+        }
+
         private double ReadConductorBpm()
         {
             object cond = ReadStatic(_conductorInstance);
