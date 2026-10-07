@@ -588,30 +588,23 @@ namespace LaneReader
 
 
         /// <summary>
-        /// True whenever a level is being played - the countdown included, and the editor's
-        /// built-in play mode.
+        /// True whenever a level is being played - the countdown included, the editor's built-in
+        /// play mode, and a pause.
         ///
         /// The three cases that must NOT show the overlay, and what excludes them:
         ///
         ///   * "press any key to start" - the state is already Countdown there, but the song has
         ///     not begun, so <see cref="SongRunning"/> is what excludes it;
         ///   * death and the results screen - Fail, Fail2 and Won;
-        ///   * menus, the editor's EDIT mode, and any pause.
+        ///   * menus and the editor's EDIT mode - their states are not in the list below.
+        ///
+        /// A pause is deliberately NOT one of them. It used to be, which meant the overlay vanished
+        /// the moment the player paused to study the chart - the opposite of what pausing is for.
+        /// The clock is still held (see <see cref="IsFrozen"/> and AdvanceRenderClock), so the notes
+        /// simply stop where they are.
         /// </summary>
         public bool Playing()
         {
-            object ctrl = ReadStatic(_ctrlInstance);
-            if (ctrl != null && _ctrlPaused != null)
-            {
-                try
-                {
-                    object v = _ctrlPaused.GetValue(ctrl, null);
-                    if (v is bool && (bool)v)
-                        return false;
-                }
-                catch { /* an unreadable pause flag is treated as not paused */ }
-            }
-
             // The editor runs its own play mode, which does not always drive the same state
             // machine as a normal level.
             if (EditorPlaying())
@@ -640,7 +633,9 @@ namespace LaneReader
         /// </summary>
         public bool LevelStanding()
         {
-            if (IsFrozen())
+            // Only the end of a run takes the overlay away. Pausing deliberately does not: the
+            // player paused to look at the chart, so the frame and the notes stay where they are.
+            if (RunEnded())
                 return false;
             if (EditorPlaying())
                 return true;
@@ -803,10 +798,11 @@ namespace LaneReader
                 _displayTimeValid = true;
             }
 
-            // Liveness, for TimelineLive: a clock that is held - paused, dead, or sitting on the
-            // level's opening prompt with the previous attempt's position - is not a timeline,
-            // and neither is one still pre-rolling towards the chart's zero.
-            if (frozen || raw < 0.0)
+            // Liveness, for TimelineLive: a clock that has not moved at all - the "press any key to
+            // start" prompt, still holding the previous attempt's position - is not a timeline, and
+            // neither is one pre-rolling towards the chart's zero. A pause is different: the notes
+            // are meant to hold where they are, so the latch stays set and they keep being drawn.
+            if (raw < 0.0)
                 _clockMoved = false;
             else if (!double.IsNaN(_previousRaw) && Math.Abs(raw - _previousRaw) > 1e-6)
                 _clockMoved = true;
