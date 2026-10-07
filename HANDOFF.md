@@ -463,15 +463,27 @@ alpha: 1 - t*t                     // 渐透明
 
 ### 小节线
 
-**拍网格由谱面自身几何算出，完全不依赖 BPM。**
+**拍网格按 TBPM（真实 BPM）铺，随变速自动变化，且锚在音符上。**
 
-- 一块砖的拍数 = **行星在它与下一块砖之间的转角 ÷ 180**
-  （`ChartReader.ComputeBeats`，用 `scrFloor.entryangle` 的差、按参考实现的
-  `trackAngleDifference` 公式算）。180° 砖 = 1 拍，twirl = 2 拍，缓弯 < 1 拍。
-- **实测验证**（工坊 `2118022119`，170 BPM）：180° 砖 = 352.94 ms = 正好 1 拍；
-  300° 砖 = 1.667 拍、60° 砖 = 0.333 拍，与真实间隔逐一对上。
-- 所以**加速 / 减速自动跟随**：砖变快 → 同样拍数占的时间变短 → 线自动变密。
-  （这正是之前那版做错的地方：它钉死在「曲子 BPM」上。）
+**TBPM 的来源是抄 JipperResourcePack 的**（`OverlayContents/Overlay.cs` 的 `UpdateBpm`）：
+
+```csharp
+// JRP 原文
+float bpm  = (float)(conductor.bpm * conductor.song.pitch * VersionSafe.GetPlanetSpeed(scrController.instance));
+float cbpm = floor.nextfloor ? (float)(60.0 / (floor.nextfloor.entryTime - floor.entryTime) * conductor.song.pitch) : bpm;
+```
+
+- **TBPM = `scrConductor.bpm × song.pitch × 行星速度`**，其中行星速度在
+  `VersionSafe.cs` 里是 `controller.playerOne.planetarySystem.speed`（新版本）
+  或 `controller.speed`（旧版本）。我们的 `ChartReader.PlanetSpeed()` 两条都试。
+- 每块砖的拍数 = **`Δt × TBPM ÷ 60`**。对正常 180° 砖这就是 1 拍；twirl 是 2 拍；
+  伪双押/半拍砖会得到 <1 拍 —— 这也正是 JRP 那个 `checkPesudo`（伪双押检查）在做的事。
+- **TBPM 只有实时才知道**（游戏在变速事件到来时才更新它），所以 `ChartReader.SampleBeatTempo`
+  边打边学：已经走过的砖记录自己的 TBPM，**还没走到的砖先借用最近一次的 TBPM**，
+  行星一到就换成自己的。学到新值就重算拍线。
+- **回落链**：TBPM → 几何转角（`entryangle` 差 / 180，180°=1 拍）→ 一砖一拍。
+  几何那条是**实测验证过**的（工坊 `2118022119`，170 BPM：180° 砖 = 352.94 ms = 正好 1 拍，
+  300° 砖 = 1.667 拍，60° 砖 = 0.333 拍），所以在 TBPM 读不到时网格依然是对的。
 - **细线 = 每拍，粗线 = 每 `每小节拍数` 拍**（3=3/4，4=4/4，可 2~8）；
   「小节起点偏移」按**整拍**挪动粗线，用来对付弱起。
 - 与音符同一基准（`boxBottom`），所以线正好在自己的拍子上压过判定线；
@@ -481,9 +493,10 @@ alpha: 1 - t*t                     // 渐透明
 
 > 这条路一次解掉两个坑：小节线不再需要 `bpm_forUnityUseOnly`（那个值在本机读不到，
 > 曾让小节线**静默不画**），也不再受「变速段落网格对不上」的限制。
-> 每次读谱打一行：
+> 每次读谱打一行（含来源与采样进度）：
 > ```
-> beats: 816 tiles, 1024.5 beats, per tile 0.333..2.000 (avg 1.255), 1024 lines, radians=False, angles unreadable=0
+> beats: 816 tiles, 1024.5 beats, per tile 0.333..2.000 (avg 1.255), 1024 lines |
+> tbpm 150.0, laid out from tbpm 700 / angles 0 tiles, sampled 700/816, radians=False, angles unreadable=0
 > ```
-> **自检方法**：若 `per tile` 全是 `1.000`，说明 `entryangle` 没给出真正的砖角度
-> （公式退化成「一砖一拍」）；若 `radians` 判错，`per tile` 会离谱。两种情况都在这行里可见。
+> **自检方法**：`from tbpm` 占多数 → TBPM 读到了；`tbpm 0.0` → 三个字段都没读到，网格会
+> 退到几何或一砖一拍。`sampled k/N` 会随打歌推进增长（这是「边打边学」的进度）。

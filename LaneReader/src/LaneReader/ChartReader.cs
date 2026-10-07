@@ -101,6 +101,18 @@ namespace LaneReader
         private FieldInfo _conductorDspTimeSong;
         private FieldInfo _conductorHasSongStarted;
 
+        // "True BPM" (TBPM): what JipperResourcePack shows as TBPM is
+        // scrConductor.bpm * song.pitch * planet speed, and that is the tempo the chart is really
+        // running at - it changes whenever the chart speeds up or slows down.
+        private FieldInfo _conductorBpm;
+        private FieldInfo _conductorSong;
+        private PropertyInfo _songPitch;
+        private FieldInfo _ctrlSpeed;
+        private FieldInfo _ctrlPlayerOne;
+        private FieldInfo _planetSystem;
+        private PropertyInfo _planetSystemSpeedProp;
+        private FieldInfo _planetSystemSpeedField;
+
         private PropertyInfo _ctrlInstance;
         private PropertyInfo _ctrlPaused;
         private FieldInfo _ctrlCurrentState;
@@ -279,11 +291,29 @@ namespace LaneReader
                 _conductorSongPosField = cond.GetField("_songposition_minusi", Any);
                 _conductorDspTimeSong = cond.GetField("dspTimeSong", Any);
                 _conductorHasSongStarted = cond.GetField("hasSongStarted", Any);
+                // TBPM ingredients, as JipperResourcePack's BPM display reads them.
+                _conductorBpm = cond.GetField("bpm", Any);
+                _conductorSong = cond.GetField("song", Any);
 
                 _ctrlInstance = ctrl.GetProperty("instance", Any);
                 _ctrlPaused = ctrl.GetProperty("paused", Any);
                 _ctrlCurrentState = ctrl.GetField("currentState", Any);
                 _ctrlCurrentSeqId = ctrl.GetField("currentSeqID", Any);
+                // Planet speed: the controller owns it directly on older builds, and on newer ones
+                // it lives under playerOne.planetarySystem. Both are tried; see PlanetSpeed().
+                _ctrlSpeed = ctrl.GetField("speed", Any);
+                _ctrlPlayerOne = ctrl.GetField("playerOne", Any);
+                if (_ctrlPlayerOne != null)
+                {
+                    Type one = _ctrlPlayerOne.FieldType;
+                    _planetSystem = one.GetField("planetarySystem", Any);
+                    if (_planetSystem != null)
+                    {
+                        Type ps = _planetSystem.FieldType;
+                        _planetSystemSpeedProp = ps.GetProperty("speed", Any);
+                        _planetSystemSpeedField = ps.GetField("speed", Any);
+                    }
+                }
 
                 Type editor = asm.GetType("scnEditor", false);
                 if (editor != null)
@@ -872,6 +902,8 @@ namespace LaneReader
             Plugin.Log("chart seqIds: " + _notes[0].SeqId + ".." +
                        _notes[_notes.Count - 1].SeqId);
 
+            _tileBpm = new double[_notes.Count];
+            _tileBpmKnown = 0;
             ComputeBeats(log);
 
             if (log)
@@ -917,16 +949,50 @@ namespace LaneReader
                 }
             }
 
+            double liveBpm = TrueBpm();
+            double lastBpm = 0.0;
+            int tbpmTiles = 0;
+            int angleTiles = 0;
             double beatAt = 0.0;
             double minBeats = double.MaxValue;
             double maxBeats = 0.0;
             for (int i = 0; i < count; i++)
             {
-                double a1 = ToDegrees(angles[i], radians);
-                double a2 = i + 1 < count ? ToDegrees(angles[i + 1], radians) : a1;  // sentinel
-                double beats = double.IsNaN(a1) || double.IsNaN(a2)
-                    ? 1.0
-                    : TurnDegrees(a1, a2) / 180.0;
+                double t0 = _notes[i].HitTime;
+                double t1 = i + 1 < count ? _notes[i + 1].HitTime : t0;
+                double span = t1 - t0;
+
+                // Prefer the true BPM the game reported while this tile was being played: a tile
+                // lasts (span * bpm / 60) beats, so the grid follows the chart through its speed
+                // changes instead of being pinned to one tempo. Tiles not reached yet borrow the
+                // most recent tempo and take their own the moment the planet arrives.
+                double bpm = _tileBpm.Length == count ? _tileBpm[i] : 0.0;
+                if (bpm > 0.0)
+                {
+                    lastBpm = bpm;
+                    tbpmTiles++;
+                }
+                else
+                {
+                    bpm = lastBpm > 0.0 ? lastBpm : liveBpm;
+                }
+
+                double beats;
+                if (bpm > 0.0 && span > 1e-9)
+                {
+                    beats = span * bpm / 60.0;
+                }
+                else
+                {
+                    // No tempo to be had anywhere: fall back to the chart's own geometry, where a
+                    // full 180-degree turn is one beat.
+                    double a1 = ToDegrees(angles[i], radians);
+                    double a2 = i + 1 < count ? ToDegrees(angles[i + 1], radians) : a1;
+                    beats = double.IsNaN(a1) || double.IsNaN(a2)
+                        ? 1.0
+                        : TurnDegrees(a1, a2) / 180.0;
+                    angleTiles++;
+                }
                 if (beats < 1e-4)
                     beats = 1e-4;
 
@@ -939,8 +1005,6 @@ namespace LaneReader
 
                 if (_beatLines.Count < 20000)
                 {
-                    double t0 = note.HitTime;
-                    double t1 = i + 1 < count ? _notes[i + 1].HitTime : t0;
                     int k = (int)Math.Ceiling(beatAt - 1e-9);
                     for (; k < beatAt + beats - 1e-9; k++)
                     {
@@ -957,10 +1021,11 @@ namespace LaneReader
             if (log)
             {
                 Plugin.Log(string.Format(
-                    "beats: {0} tiles, {1:F1} beats, per tile {2:F3}..{3:F3} (avg {4:F3}), " +
-                    "{5} lines, radians={6}, angles unreadable={7}",
-                    count, beatAt, minBeats, maxBeats, beatAt / count,
-                    _beatLines.Count, radians, unreadable));
+                    "beats: {0} tiles, {1:F1} beats, per tile {2:F3}..{3:F3} (avg {4:F3}), {5} lines | " +
+                    "tbpm {6:F1}, laid out from tbpm {7} / angles {8} tiles, sampled {9}/{0}, " +
+                    "radians={10}, angles unreadable={11}",
+                    count, beatAt, minBeats, maxBeats, beatAt / count, _beatLines.Count,
+                    liveBpm, tbpmTiles, angleTiles, _tileBpmKnown, radians, unreadable));
             }
         }
 
@@ -1006,6 +1071,155 @@ namespace LaneReader
         }
 
         // ------------------------------------------------------------ helpers
+
+        /// <summary>
+        /// The tempo the chart is really running at: scrConductor.bpm times the song pitch times
+        /// the planet speed. This is what JipperResourcePack displays as TBPM, and it is the value
+        /// that changes when a chart speeds up or slows down - which is why the beat lines are laid
+        /// out from it rather than from any one BPM.
+        /// </summary>
+        public double TrueBpm()
+        {
+            double bpm = ReadConductorBpm();
+            if (bpm <= 0.0)
+                return 0.0;
+            return bpm * SongPitch() * PlanetSpeed();
+        }
+
+        private double ReadConductorBpm()
+        {
+            object cond = ReadStatic(_conductorInstance);
+            if (cond == null || _conductorBpm == null)
+                return 0.0;
+            try
+            {
+                return ToDouble(_conductorBpm.GetValue(cond));
+            }
+            catch
+            {
+                return 0.0;
+            }
+        }
+
+        /// <summary>The song's playback pitch (1 normally), or 1 when it cannot be read.</summary>
+        private double SongPitch()
+        {
+            object cond = ReadStatic(_conductorInstance);
+            if (cond == null || _conductorSong == null)
+                return 1.0;
+            try
+            {
+                object song = _conductorSong.GetValue(cond);
+                if (song == null)
+                    return 1.0;
+                if (_songPitch == null)
+                    _songPitch = song.GetType().GetProperty("pitch", Any);
+                if (_songPitch == null)
+                    return 1.0;
+                double pitch = ToDouble(_songPitch.GetValue(song, null));
+                return pitch > 0.0 ? pitch : 1.0;
+            }
+            catch
+            {
+                return 1.0;
+            }
+        }
+
+        /// <summary>
+        /// The planet's speed multiplier - the chart's own speed setting, and what makes TBPM differ
+        /// from the level's BPM. Newer builds keep it under playerOne.planetarySystem, older ones
+        /// directly on the controller, exactly as JipperResourcePack's version-safe layer does it.
+        /// Falls back to 1.
+        /// </summary>
+        private double PlanetSpeed()
+        {
+            object ctrl = ReadStatic(_ctrlInstance);
+            if (ctrl == null)
+                return 1.0;
+
+            if (_ctrlPlayerOne != null && _planetSystem != null)
+            {
+                try
+                {
+                    object one = _ctrlPlayerOne.GetValue(ctrl);
+                    object system = one == null ? null : _planetSystem.GetValue(one);
+                    if (system != null)
+                    {
+                        object raw = _planetSystemSpeedProp != null
+                            ? _planetSystemSpeedProp.GetValue(system, null)
+                            : (_planetSystemSpeedField != null
+                                ? _planetSystemSpeedField.GetValue(system) : null);
+                        double speed = ToDouble(raw);
+                        if (speed > 0.0)
+                            return speed;
+                    }
+                }
+                catch { /* fall through to the older field */ }
+            }
+
+            if (_ctrlSpeed != null)
+            {
+                try
+                {
+                    double speed = ToDouble(_ctrlSpeed.GetValue(ctrl));
+                    if (speed > 0.0)
+                        return speed;
+                }
+                catch { /* fall through */ }
+            }
+            return 1.0;
+        }
+
+        /// <summary>
+        /// True BPM sampled while each tile was being played. The value is only knowable live - the
+        /// game updates it as speed events come round - so the chart is learned as it is played: a
+        /// tile that has not been reached yet is laid out with the most recent tempo, and takes its
+        /// own the moment the planet gets there.
+        /// </summary>
+        private double[] _tileBpm = new double[0];
+        private int _tileBpmKnown;
+
+        /// <summary>Files the current TBPM under the note being played; call once a frame.</summary>
+        public void SampleBeatTempo(double now)
+        {
+            if (_notes.Count == 0 || _tileBpm.Length != _notes.Count)
+                return;
+
+            double bpm = TrueBpm();
+            if (bpm <= 0.0)
+                return;
+
+            int note = NoteAt(now);
+            if (note < 0 || _tileBpm[note] == bpm)
+                return;
+
+            if (_tileBpm[note] <= 0.0)
+                _tileBpmKnown++;
+            _tileBpm[note] = bpm;
+            ComputeBeats(false);
+        }
+
+        /// <summary>Index of the note the given clock time falls in, or -1 before the first note.</summary>
+        private int NoteAt(double now)
+        {
+            int lo = 0;
+            int hi = _notes.Count - 1;
+            int best = -1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (_notes[mid].HitTime <= now)
+                {
+                    best = mid;
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid - 1;
+                }
+            }
+            return best;
+        }
 
         /// <summary>
         /// The level's own BPM (scrLevelMaker.bpm_forUnityUseOnly), or 0 when it cannot be read.

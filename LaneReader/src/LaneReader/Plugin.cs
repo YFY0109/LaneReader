@@ -330,6 +330,10 @@ namespace LaneReader
             // notes hold position instead of sliding away.
             Chart.AdvanceRenderClock(frozen);
 
+            // The chart's true BPM is only knowable as it plays, so the beat grid is learned along
+            // with it; see ChartReader.SampleBeatTempo.
+            Chart.SampleBeatTempo(Chart.RenderTime());
+
             // Leaving a death/clear state is a new attempt (revive, retry or restart). The
             // overlay has to come back, and it has to come back re-planned, because a checkpoint
             // revive reuses the same chart objects rather than rebuilding them.
