@@ -114,15 +114,6 @@ namespace LaneReader
             double baseBpm = NormaliseBpm(levelBpm, maxHardResistBpm);
             plan.BaseBpm = baseBpm;
 
-            // What one *chart* beat is worth in this scale. The window lengths above are measured in
-            // beats of the normalised BPM, which runs several octaves faster than the chart itself,
-            // so a tile that is a whole chart beat long is worth this many degrees - and the
-            // reference's own hand rule already treats 720 degrees as "a long note". At the default
-            // limit the two agree exactly.
-            double chartBeat = levelBpm > 0.0
-                ? DegreesPerBeat * baseBpm / levelBpm
-                : DegreesPerBeat;
-
             bool preferred = true;
             int first = 0;
 
@@ -131,24 +122,12 @@ namespace LaneReader
                 // One window: notes until the accumulated length covers a normalised beat.
                 double degree = 0.0;
                 int window = 0;
-                while (first + window < count)
+                do
                 {
-                    double own = DegreeOf(hitTimes, first + window, baseBpm);
-
-                    // A note that is a whole beat or more on its own is a slow note, not a
-                    // subdivision of one, so it must not be glued to the note before it. Without
-                    // this, one tiny tile (a shallow turn, short in time) followed by a long one
-                    // adds up to a beat and came out as a two-finger roll - a roll between two
-                    // notes that are nowhere near each other. The reference happily does that; it was
-                    // written for unbroken streams, and this is a deliberate departure from it.
-                    if (window > 0 && own >= chartBeat - Epsilon)
-                        break;
-
-                    degree += own;
+                    degree += DegreeOf(hitTimes, first + window, baseBpm);
                     window++;
-                    if (degree >= DegreesPerBeat - Epsilon)
-                        break;
                 }
+                while (degree < DegreesPerBeat - Epsilon && first + window < count);
 
                 plan.WindowCount.Add(window);
                 plan.WindowDegree.Add(degree);
