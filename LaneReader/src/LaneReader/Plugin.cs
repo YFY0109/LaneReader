@@ -444,16 +444,21 @@ namespace LaneReader
         ///   * the static frame - lanes, judgement line, boxes, key labels - is wanted as soon as
         ///     a level is up, including the "press any key to start" prompt a fresh level opens
         ///     with, so it only needs the level to be standing;
-        ///   * the notes belong to a run that is actually under way, so they additionally need a
-        ///     playing state and a live clock. Drawing them at the prompt scrolled the chart past
-        ///     the player before they had pressed anything.
+        ///   * the notes belong to a run that is under way, which is what <see cref="ChartReader.TimelineLive"/>
+        ///     says: the clock has moved at least once since the chart was set up.
+        ///
+        /// The notes deliberately do NOT go through ChartReader.Playing() as well. That test only
+        /// accepts the PlayerControl/Checkpoint/Countdown states, and a paused game reports
+        /// "Start" - so pausing hid the notes even though the frame stayed. A log line from a real
+        /// session caught it: "state=Start song=1 live=1 frame=1 notes=0". The clock is still held
+        /// while paused, so the notes simply stop where they are, which is the whole point.
         ///
         /// Together the two gates are what keep the overlay off the menus, the level editor, the
-        /// pause menu and the death screen.
+        /// death screen and the pre-start prompt.
         /// </summary>
         private static bool NotesVisible(bool frame)
         {
-            return frame && Chart.Playing() && Chart.TimelineLive();
+            return frame && Chart.TimelineLive();
         }
 
         /// <summary>
