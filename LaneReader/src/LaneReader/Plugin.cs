@@ -180,8 +180,8 @@ namespace LaneReader
 
                 if (Cfg.FingeringMode == 1)
                 {
-                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 300f, 1200f, "F0");
-                    GUILayout.Label("越低窗口越短 → 越偏换手/轮指（默认 840 = 参考实现；600 以下明显更轮）");
+                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
+                    GUILayout.Label("低于它用两指硬抗，高于它开始轮指（建议 800~1100）");
                     GUILayout.BeginHorizontal();
                     GUILayout.Label("轮指方向", GUILayout.Width(200f));
                     if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
@@ -767,15 +767,8 @@ namespace LaneReader
         /// </summary>
         private static double ChartBpm(out string source)
         {
-            // scrConductor.bpm first: it is the level's own BPM, the field JipperResourcePack reads
-            // on this install, and the value the reference macro takes from the chart file.
-            double bpm = Chart.ConductorBpm();
-            source = "conductor";
-            if (bpm < 20.0 || bpm > 1000.0)
-            {
-                bpm = Chart.LevelBpm();
-                source = "level";
-            }
+            double bpm = Chart.LevelBpm();
+            source = "game";
             if (bpm < 20.0 || bpm > 1000.0)
             {
                 double estimated = Chart.EstimatedBeatSeconds();
