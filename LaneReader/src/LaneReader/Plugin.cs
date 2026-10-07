@@ -43,6 +43,8 @@ namespace LaneReader
 
         // ---- strike feedback: purely time driven, the game's judgement is not read ----
         private static int _chartKey = -1;
+        /// <summary>Chart generation the beat grid was last logged for, so it is logged once.</summary>
+        private static int _beatLogGeneration = -1;
         /// <summary>
         /// How much the note swells at the line. Small on purpose: a big swell reads as a
         /// different object rather than as the same note being struck.
@@ -52,6 +54,7 @@ namespace LaneReader
 
         private static bool _showAppearance = true;
         private static bool _showFingering = true;
+        private static bool _showBeat = true;
 
         /// <summary>Left/right hand colours offered in the panel, so no colour picker is needed.</summary>
         internal static readonly Color[] Palette =
@@ -130,6 +133,9 @@ namespace LaneReader
             Toggle("键位标签 D F J K", ref Cfg.ShowKeyLabels);
             Toggle("判定框", ref Cfg.ShowJudgeBoxes);
             Toggle("打击弹跳", ref Cfg.ShowHitEffects);
+            Toggle("音符边框", ref Cfg.ShowNoteBorder);
+            if (Cfg.ShowNoteBorder)
+                Slider("边框粗细 (px)", ref Cfg.NoteBorderPx, 1f, 8f, "F0");
             Space();
 
             Header("布局");
@@ -138,6 +144,26 @@ namespace LaneReader
             Slider("轨道宽度 (px)", ref Cfg.LaneWidthPx, 40f, 400f, "F0");
             Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
             Slider("判定线高度", ref Cfg.JudgeLineY, 0f, 1f, "F2");
+            Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -600f, 600f, "F0");
+            Slider("垂直偏移 (px)", ref Cfg.OffsetYPx, -400f, 400f, "F0");
+            Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 0.5f, "F3");
+            Space();
+
+            _showBeat = Fold("小节线", _showBeat);
+            if (_showBeat)
+            {
+                Toggle("显示小节线", ref Cfg.ShowBeatLines);
+                if (Cfg.ShowBeatLines)
+                {
+                    IntSlider("每小节拍数 (3=3/4, 4=4/4)", ref Cfg.BeatsPerBar, 2, 8);
+                    Slider("拍速 BPM (0=自动)", ref Cfg.BeatBpm, 0f, 400f, "F0");
+                    Slider("相位偏移 (拍)", ref Cfg.BeatPhaseBeats, -4f, 4f, "F2");
+                    Slider("线透明度", ref Cfg.BeatLineAlpha, 0f, 0.6f, "F3");
+                    Slider("细线粗细 (px)", ref Cfg.BeatLineThicknessPx, 1f, 8f, "F0");
+                    Slider("粗线粗细 (px)", ref Cfg.BarLineThicknessPx, 1f, 12f, "F0");
+                    Toggle("横跨全屏", ref Cfg.BeatLineFullWidth);
+                }
+            }
             Space();
 
             Header("对齐");
@@ -233,6 +259,16 @@ namespace LaneReader
             GUILayout.EndHorizontal();
         }
 
+        /// <summary>A slider over whole numbers, for settings that are stored as an int.</summary>
+        private static void IntSlider(string label, ref int value, int min, int max)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(200f));
+            value = Mathf.RoundToInt(GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(220f)));
+            GUILayout.Label(value.ToString(), GUILayout.Width(70f));
+            GUILayout.EndHorizontal();
+        }
+
         /// <summary>Cycles the toggle key through a small, sensible set of choices.</summary>
         private static int NextKey(int current)
         {
@@ -325,6 +361,19 @@ namespace LaneReader
                 ApplyHandSplit();
             else
                 ApplyAdoFalling();
+
+            // The beat grid's tempo is worth one log line per chart: it is the one input the
+            // overlay takes from the game that has never been verified, and a wrong BPM would be
+            // invisible in the picture but obvious here.
+            if (log && Cfg.ShowBeatLines && _beatLogGeneration != Chart.Generation)
+            {
+                _beatLogGeneration = Chart.Generation;
+                double bpm = Cfg.BeatBpm > 0.01f ? Cfg.BeatBpm : Chart.LevelBpm();
+                Logger.Log(string.Format(
+                    "beat grid: {0:F1} bpm ({1}), {2:F1} ms/beat, {3} beats/bar, phase {4:F2}",
+                    bpm, Cfg.BeatBpm > 0.01f ? "manual" : "chart",
+                    bpm > 0.0 ? 60000.0 / bpm : 0.0, Cfg.BeatsPerBar, Cfg.BeatPhaseBeats));
+            }
         }
 
         /// <summary>The planner this mod has always shipped with; see FingeringPlanner.</summary>
@@ -462,9 +511,9 @@ namespace LaneReader
             float laneW = Cfg.LaneWidthPx * refScale;
             float laneGap = Cfg.LaneGapPx * refScale;
             float total = FingeringPlanner.FingerCount * laneW + (FingeringPlanner.FingerCount - 1) * laneGap;
-            float x0 = (w - total) * 0.5f;
+            float x0 = (w - total) * 0.5f + Cfg.OffsetXPx * refScale;
 
-            float judgeY = h * (1f - Mathf.Clamp01(Cfg.JudgeLineY));
+            float judgeY = h * (1f - Mathf.Clamp01(Cfg.JudgeLineY)) + Cfg.OffsetYPx * refScale;
             float speed = Mathf.Max(1f, Cfg.NoteSpeedPxPerSec * refScale);
             float noteH = Mathf.Max(2f, Cfg.NoteHeightPx * refScale);
 
@@ -474,7 +523,7 @@ namespace LaneReader
             // ---- lanes ----------------------------------------------------------
             if (Cfg.ShowLanes)
             {
-                var body = new Color(1f, 1f, 1f, 0.06f);
+                var body = new Color(1f, 1f, 1f, Cfg.LaneOpacity);
                 var edge = new Color(1f, 1f, 1f, 0.28f);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
@@ -484,6 +533,15 @@ namespace LaneReader
                     Fill(new Rect(x + laneW - 2f, 0f, 2f, judgeY), edge);
                 }
             }
+
+            double now = Chart.RenderTime() + Cfg.TimeOffsetSeconds;
+
+            // ---- beat lines -----------------------------------------------------
+            // Drawn right after the lanes so they sit behind the line, the boxes and the notes:
+            // they are a reading aid, not a playfield element. They scroll with the clock, so the
+            // pre-start prompt (which draws the frame only) leaves them out.
+            if (drawNotes && Cfg.ShowBeatLines && Chart.Ready)
+                DrawBeatLines(refScale, w, x0, total, judgeY, speed, noteH, now);
 
             // ---- judgement line -------------------------------------------------
             if (Cfg.ShowJudgeLine)
@@ -529,7 +587,6 @@ namespace LaneReader
             if (!drawNotes || !Chart.Ready || Chart.Count == 0)
                 return;
 
-            double now = Chart.RenderTime() + Cfg.TimeOffsetSeconds;
             int count = Chart.Count;
             IList<Note> notes = Chart.Notes;
 
@@ -585,14 +642,88 @@ namespace LaneReader
 
                     // Bottom edge welded to the bottom of the judgement box, so the note grows
                     // upward and never drifts off the line as its size changes.
-                    Fill(new Rect(x + (laneW - w2) * 0.5f, boxBottom - h2, w2, h2),
-                        new Color(c.r, c.g, c.b, alpha));
+                    FillNote(new Rect(x + (laneW - w2) * 0.5f, boxBottom - h2, w2, h2),
+                        new Color(c.r, c.g, c.b, alpha), refScale);
                     continue;
                 }
 
                 if (Cfg.ShowNotes)
-                    Fill(new Rect(x + 2f, y, laneW - 4f, noteH), c);
+                    FillNote(new Rect(x + 2f, y, laneW - 4f, noteH), c, refScale);
             }
+        }
+
+        /// <summary>
+        /// Fills a note, with a darker outline when the outline is enabled. The block is drawn in
+        /// the darkened colour and the note's own colour is inset on top of it, so a note keeps
+        /// exactly the footprint it has without an outline.
+        /// </summary>
+        private static void FillNote(Rect r, Color c, float refScale)
+        {
+            if (!Cfg.ShowNoteBorder)
+            {
+                Fill(r, c);
+                return;
+            }
+
+            float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
+            if (r.width <= b * 2f || r.height <= b * 2f)
+            {
+                Fill(r, c);                       // too small to hold an outline
+                return;
+            }
+
+            Fill(r, new Color(c.r * 0.35f, c.g * 0.35f, c.b * 0.35f, c.a));
+            Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
+        }
+
+        /// <summary>
+        /// Beat and bar lines: one thin line per beat, a thick one every BeatsPerBar beats. They
+        /// scroll with the notes and are positioned against the same bottom edge the notes arrive
+        /// at, so a line crosses the judgement line exactly on its beat.
+        /// </summary>
+        private static void DrawBeatLines(float refScale, float screenW, float x0, float total,
+            float judgeY, float speed, float noteH, double now)
+        {
+            double beat = BeatSeconds();
+            if (beat <= 0.0001)
+                return;
+
+            int perBar = Mathf.Clamp(Cfg.BeatsPerBar, 2, 16);
+            float boxBottom = judgeY + noteH * 0.5f;
+            double phase = Cfg.BeatPhaseBeats * beat;
+            double topTime = now + boxBottom / speed;      // the time at the top of the screen
+
+            int first = (int)Math.Floor((now - phase) / beat);
+            int last = (int)Math.Ceiling((topTime - phase) / beat);
+            if (last - first > 4096)
+                return;                                    // an absurd tempo; never loop forever
+
+            float left = Cfg.BeatLineFullWidth ? 0f : x0;
+            float width = Cfg.BeatLineFullWidth ? screenW : total;
+
+            for (int k = first; k <= last; k++)
+            {
+                bool bar = ((k % perBar) + perBar) % perBar == 0;
+                float thick = Mathf.Max(1f,
+                    (bar ? Cfg.BarLineThicknessPx : Cfg.BeatLineThicknessPx) * refScale);
+                float alpha = bar ? Mathf.Min(1f, Cfg.BeatLineAlpha * 1.8f) : Cfg.BeatLineAlpha;
+
+                float y = boxBottom - (float)((k * beat + phase - now) * speed);
+                Fill(new Rect(left, y, width, thick), new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
+        /// <summary>
+        /// Seconds per beat for the beat lines: the manual override when it is set, otherwise the
+        /// chart's own BPM. Values outside a plausible range are refused rather than turned into a
+        /// silly grid; the log prints what the game handed over, so a wrong one is visible.
+        /// </summary>
+        private static double BeatSeconds()
+        {
+            double bpm = Cfg.BeatBpm > 0.01f ? Cfg.BeatBpm : Chart.LevelBpm();
+            if (bpm < 20.0 || bpm > 1000.0)
+                return 0.0;
+            return 60.0 / bpm;
         }
 
         // ------------------------------------------------------------------ logging

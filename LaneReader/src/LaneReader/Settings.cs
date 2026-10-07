@@ -28,14 +28,57 @@ namespace LaneReader
         /// <summary>Judgement boxes: one note-sized rectangle per lane at the line.</summary>
         public bool ShowJudgeBoxes = true;
 
-        /// <summary>Lane flash and judgement text when the game registers a hit.</summary>
+        /// <summary>Strike bounce on the judgement line; purely time driven, the game's judgement
+        /// is never read.</summary>
         public bool ShowHitEffects = true;
+
+        /// <summary>Draw every note with a darker outline, so notes near each other stay readable.</summary>
+        public bool ShowNoteBorder = true;
+
+        /// <summary>Outline thickness, in reference pixels (1080p).</summary>
+        public float NoteBorderPx = 2f;
 
         public float NoteSpeedPxPerSec = 620f;
         public float NoteHeightPx = 26f;
         public float LaneWidthPx = 110f;
         public float LaneGapPx = 8f;
         public float JudgeLineY = 0.18f;
+
+        /// <summary>Horizontal shift of the whole overlay, in reference pixels (1080p).</summary>
+        public float OffsetXPx = 0f;
+
+        /// <summary>Vertical shift of the judgement line, in reference pixels (1080p). The notes,
+        /// boxes and beat lines follow it, since they are all anchored to that line.</summary>
+        public float OffsetYPx = 0f;
+
+        /// <summary>Lane background opacity. 0 removes the fill and leaves only the lane edges.</summary>
+        public float LaneOpacity = 0.06f;
+
+        /// <summary>Beat lines: a thin line on every beat and a thick one every
+        /// <see cref="BeatsPerBar"/> beats, scrolling with the notes.</summary>
+        public bool ShowBeatLines = true;
+
+        /// <summary>Beats per bar: 4 for 4/4, 3 for 3/4.</summary>
+        public int BeatsPerBar = 4;
+
+        /// <summary>Beat tempo for the lines, or 0 to take the chart's own BPM.</summary>
+        public float BeatBpm = 0f;
+
+        /// <summary>Shifts the beat grid by this many beats, to line it up with the music when the
+        /// chart's first tile is not on a downbeat.</summary>
+        public float BeatPhaseBeats = 0f;
+
+        /// <summary>Opacity of a beat line; bar lines are drawn stronger than this.</summary>
+        public float BeatLineAlpha = 0.18f;
+
+        /// <summary>Thin line thickness, in reference pixels (1080p).</summary>
+        public float BeatLineThicknessPx = 1f;
+
+        /// <summary>Thick (bar) line thickness, in reference pixels (1080p).</summary>
+        public float BarLineThicknessPx = 3f;
+
+        /// <summary>Draw the beat lines across the whole screen instead of only across the lanes.</summary>
+        public bool BeatLineFullWidth = true;
 
         public float TimeOffsetSeconds = 0f;
 
