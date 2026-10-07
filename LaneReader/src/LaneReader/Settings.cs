@@ -38,7 +38,9 @@ namespace LaneReader
         /// <summary>Outline thickness, in reference pixels (1080p).</summary>
         public float NoteBorderPx = 2f;
 
-        public float NoteSpeedPxPerSec = 620f;
+        /// <summary>Fall speed, in reference pixels per second at 1080p. The default is the speed
+        /// this mod has settled on with its player: 620 raised by half.</summary>
+        public float NoteSpeedPxPerSec = 930f;
         public float NoteHeightPx = 26f;
         public float LaneWidthPx = 110f;
         public float LaneGapPx = 8f;
@@ -97,17 +99,19 @@ namespace LaneReader
         /// <summary>
         /// Which fingering to use: 0 = AdoFalling's original planner (what this mod shipped
         /// with), 1 = the hand-split planner ported from ReADOFAIMacro. See
-        /// <see cref="HandPlanner"/>.
+        /// <see cref="HandPlanner"/>. The hand-split planner is the default: it is the one that
+        /// was tuned against real play.
         /// </summary>
-        public int FingeringMode = 0;
+        public int FingeringMode = 1;
 
         /// <summary>
-        /// The hard-resist limit the hand-split planner works against: above this tempo two
-        /// fingers are no longer considered enough and notes get rolled instead. This is the
-        /// reference implementation's own knob, and its readme suggests 800-1100; lower values
-        /// roll more.
+        /// The hard-resist limit the hand-split planner works against: passing it halves the
+        /// window, which is how the reference implementation rolls more the lower it is set.
+        /// 506 is the value the mod was tuned to in real play (see HANDOFF §14, "已知良好状态"):
+        /// with the level BPM unreadable the planner starts from its own 800 BPM fallback, so 506
+        /// halves it to 400 - the setting that produced 75% hand switching on a real chart.
         /// </summary>
-        public float MaxHardResistBpm = 840f;
+        public float MaxHardResistBpm = 506f;
 
         /// <summary>
         /// Roll direction: true starts each hand on its middle finger (K J D F, the "outer"
