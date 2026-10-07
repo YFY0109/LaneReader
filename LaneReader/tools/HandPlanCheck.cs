@@ -34,7 +34,6 @@ internal static class HandPlanCheck
         string path = args[0];
         int handKeys = int.Parse(args[1], CultureInfo.InvariantCulture);
         bool outerRoll = !(args.Length > 2 && args[2] == "inner");
-
         double levelBpm = 0.0;
         double maxBpm = HandPlanner.DefaultMaxHardResistBpm;
         var times = new List<double>();
@@ -68,6 +67,10 @@ internal static class HandPlanCheck
             Console.Error.WriteLine("no TS lines in " + path);
             return 2;
         }
+
+        // Optional override for sweeping the hard-resist limit; the dump's value is the default.
+        if (args.Length > 3)
+            maxBpm = double.Parse(args[3], CultureInfo.InvariantCulture);
 
         HandPlan plan = HandPlanner.Assign(times, levelBpm, maxBpm, handKeys, outerRoll);
 
