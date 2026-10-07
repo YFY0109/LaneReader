@@ -368,7 +368,6 @@ namespace LaneReader
                 ApplyHandSplit();
             else
                 ApplyAdoFalling();
-
             // The beat grid's tempo is worth one log line per chart: it is the one input the
             // overlay takes from the game that has never been verified, and a wrong BPM would be
             // invisible in the picture but obvious here.
@@ -407,7 +406,8 @@ namespace LaneReader
             for (int i = 0; i < notes.Count; i++)
                 times.Add(notes[i].HitTime);
 
-            double bpm = Chart.LevelBpm();
+            string source;
+            double bpm = ChartBpm(out source);
             HandPlan plan = HandPlanner.Assign(times, bpm, Cfg.MaxHardResistBpm,
                 2, Cfg.OuterRoll);
 
@@ -420,8 +420,8 @@ namespace LaneReader
             }
 
             Logger.Log(string.Format(
-                "hand split: {0} notes, level bpm {1:F1}{2}, {3}, {4}, rolls {5}, taps {6}",
-                n, bpm, bpm > 0.0 ? "" : " (unreadable!)", plan.Summary,
+                "hand split: {0} notes, bpm {1:F1} ({2}){3}, {4}, {5}, rolls {6}, taps {7}",
+                n, bpm, source, bpm > 0.0 ? "" : " - unusable, plan is a guess", plan.Summary,
                 Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps));
         }
 
@@ -740,22 +740,39 @@ namespace LaneReader
         /// chart's own BPM. Values outside a plausible range are refused rather than turned into a
         /// silly grid; the log prints what the game handed over, so a wrong one is visible.
         /// </summary>
-        private static double BeatSeconds()
+        /// <summary>
+        /// The chart's BPM, with the fallbacks the beat grid and the hand-split planner share: the
+        /// game's own value when it is usable, otherwise a guess from the note spacing. 0 means
+        /// neither worked, and <paramref name="source"/> says which one answered.
+        /// </summary>
+        private static double ChartBpm(out string source)
         {
-            double bpm = Cfg.BeatBpm;
-            string source = "manual";
-            if (bpm <= 0.01f)
-            {
-                bpm = Chart.LevelBpm();
-                source = "chart";
-            }
+            double bpm = Chart.LevelBpm();
+            source = "game";
             if (bpm < 20.0 || bpm > 1000.0)
             {
                 double estimated = Chart.EstimatedBeatSeconds();
                 bpm = estimated > 0.0001 ? 60.0 / estimated : 0.0;
                 source = "estimated";
             }
+            return bpm;
+        }
 
+        /// <summary>
+        /// Seconds per beat for the beat lines: the manual override when it is set, otherwise
+        /// <see cref="ChartBpm"/>. The guess exists because the game's BPM has been unreadable on
+        /// this install, and without it the beat lines simply never drew.
+        /// </summary>
+        private static double BeatSeconds()
+        {
+            if (Cfg.BeatBpm > 0.01f && Cfg.BeatBpm < 1000f)
+            {
+                _beatSource = "manual";
+                return 60.0 / Cfg.BeatBpm;
+            }
+
+            string source;
+            double bpm = ChartBpm(out source);
             _beatSource = source;
             if (bpm < 20.0 || bpm > 1000.0)
                 return 0.0;
