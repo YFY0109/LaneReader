@@ -42,8 +42,30 @@ namespace LaneReader
         /// <summary>
         /// Largest gap (ms) that still counts as a roll. Below it the lane walks one step per
         /// note; above it the two index lanes alternate. Matches AdoFalling's default of 180.
+        /// Only used while <see cref="FingeringMode"/> is the AdoFalling planner.
         /// </summary>
         public float RollWindowMs = 180f;
+
+        /// <summary>
+        /// Which fingering to use: 0 = AdoFalling's original planner (what this mod shipped
+        /// with), 1 = the hand-split planner ported from ReADOFAIMacro. See
+        /// <see cref="HandPlanner"/>.
+        /// </summary>
+        public int FingeringMode = 0;
+
+        /// <summary>
+        /// The hard-resist limit the hand-split planner works against: above this tempo two
+        /// fingers are no longer considered enough and notes get rolled instead. This is the
+        /// reference implementation's own knob, and its readme suggests 800-1100; lower values
+        /// roll more.
+        /// </summary>
+        public float MaxHardResistBpm = 840f;
+
+        /// <summary>
+        /// Roll direction: true starts each hand on its middle finger (K J D F, the "outer"
+        /// roll), false on its index finger (J K F D, the "inner" roll).
+        /// </summary>
+        public bool OuterRoll = true;
 
         /// <summary>Palette index shared by both hands; see <see cref="Plugin.Palette"/>.</summary>
         public int ColourPreset = 0;

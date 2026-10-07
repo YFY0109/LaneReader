@@ -14,6 +14,8 @@
 | 谱面读取（游戏内存，无需文件） | ✅ |
 | 4K 轨道 / 判定线 / 判定框 | ✅ |
 | 手序排键（AdoFalling 原版算法） | ✅ |
+| 手序排键（拆手序，移植 ReADOFAIMacro） | ✅ 离线逐窗口验证通过（28 谱 / 17558 窗口 100% 一致）；**未实机验证** |
+| 静态框 / 音符两道显示门控 | ⚠️ 已实现，未实机验证 |
 | 键位标签 D F J K | ✅ |
 | 中旋识别 + 去重 | ✅ |
 | 打击弹跳效果 | ✅ |
@@ -54,7 +56,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 ---
 
-## 4. 架构：五个文件
+## 4. 架构：六个文件
 
 ### `Plugin.cs` — 入口 + 渲染 + 设置面板
 
@@ -101,6 +103,12 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 只挂 `AsyncInputManager` 的 `Update`→`Plugin.Tick()` 和 `OnGUI`→`Plugin.Draw()`（原因见 6.3）。
 两个补丁都是 postfix，只做转发，内部异常不会影响游戏自己的输入处理。
+
+---
+
+### `HandPlanner.cs` — 拆手序（可选手法）
+
+移植 ReADOFAIMacro（MIT）的按键分配算法，只依赖音符时间，不碰 Unity。详见 §14。
 
 ---
 
@@ -352,7 +360,7 @@ alpha: 1 - t*t                     // 渐透明
 
 | 内容 | 是否纳入 |
 |---|---|
-| `LaneReader/`（5 个 `.cs`、`Mod/Info.json`、`build.ps1`） | ✅ |
+| `LaneReader/`（6 个 `.cs`、`Mod/Info.json`、`build.ps1`、`tools/HandPlanCheck.cs`） | ✅ |
 | `HANDOFF.md` + 根目录的 `install-adofalling.ps1` / `uninstall-adofalling.ps1` / `launch-adofai*.ps1` / `.vbs` | ✅ |
 | `LaneReader/build/`（`LaneReader.dll`、`csc.log`） | ❌ 构建产物，`build.ps1` 会重建 |
 | `AdoFalling/` | ❌ **独立仓库**：`CatciSurn/AdoFalling` 的克隆，自带 `.git`，必须在它自己的目录里提交 |
@@ -362,3 +370,73 @@ alpha: 1 - t*t                     // 渐透明
 - 没有用 submodule 收编 AdoFalling：它工作区里有未提交的本地改动（`ControlPanel.cs`），
   submodule 只记录 commit，那处改动会脱离版本控制。
 - 部署（`build.ps1 -Install`）**不在**仓库里：DLL 产物被忽略，改动源码后要自己重新构建部署。
+
+---
+
+## 14. 拆手序（`HandPlanner.cs`）
+
+设置面板「排键」里切换手法，**默认仍是 AdoFalling 原版**：
+
+| 手法 | 实现 | 说明 |
+|---|---|---|
+| AdoFalling 原版 | `FingeringPlanner.cs` | 间隔 < 窗口 (±1 走格)，否则 F/J 交替 |
+| 拆手序 | `HandPlanner.cs` | 移植 [ReADOFAIMacro](https://github.com/TonyLimps/ReADOFAIMacro)（MIT） |
+
+### 它的模型
+
+1. **BPM 归一化**：`while (bpm <= 550) bpm *= 2; while (bpm > 1100) bpm /= 2;`
+   再 `if (bpm > 最大硬抗BPM) bpm /= 2;` —— 这就是「窗口 BPM 不断翻倍」的实现。
+   「最大硬抗 BPM」是用户可感知的旋钮（建议 800~1100，**越低越偏轮指**）。
+2. **窗口 = 归一化后的一拍**：累积音符时长直到 `degree ≥ 180`，窗口内的音符数就是 `count`。
+3. **`count` 决定指法**，**窗口长度（degree）决定下一窗换不换手**：
+   `≤270` 换 / `≤450` 不换 / `≤630` 换 / `<720` 不换 / `≥720` 回主手。
+   慢音（1 拍以上）因此变成**单指重复**，而 1 拍的音才是两手交替 —— 和「档1 单指、档2 主副手交替、
+   档3 轮指」的说法完全对上。
+
+**两个关键结论**：
+
+- **只需要音符时间。** 参考实现解析文件里的转角 / twirl / pause / 变速，全都只是为了**重建时间**；
+  游戏里每个音已经有 `entryTime`，所以这些一个都不用复刻。
+- **`degree ≡ 3 × Δt(秒) × 归一化BPM`**，也就是「窗口时长（归一化拍）×180」。
+
+### 4K 适配
+
+参考实现每只手 4 根手指（手8/手16 布局），DFJK 每只手只有 2 根，所以指法表按**手容量**参数化
+（`HandPlanner.Assign(..., handKeys, outerRoll)`）：
+
+| count | 参考实现 | 4K（handKeys=2） |
+|---|---|---|
+| 1 | `p1` | `J`（下一窗换手 → `F`） |
+| 2 | `p2 p1` | `K J`（外轮；`OuterRoll=false` → `J K` 内轮） |
+| 3 | `p3 p2 p1` | 递归：`p1` + `n2 n1` = `J D F` ← **待用户拍板** |
+| 4 | `p4 p3 p2 p1` | 正好一个完整外轮周期 `K J D F` |
+| >手容量 | 递归对半分手 | 同左 |
+
+工坊 39 张谱 17558 个窗口的 count 实测分布：**count1 85.1% / count2 14.0% / count3 0.9% / 无 ≥4**。
+
+### 验证方式（离线 oracle，可复用）
+
+`LaneReader/tools/HandPlanCheck.cs` + 临时克隆的 ReADOFAIMacro（打了「只分析不发按键 + 导出
+每个音时间与逐窗口决策」的补丁）：
+
+1. 宏导出 `LEVELBPM / BASEBPM / MAXBPM / TSX`（17 位有效数字）+ 逐窗口 `WIN` 决策；
+2. `HandPlanCheck <dump> 4` 用同样时间跑移植版，打印同格式决策；
+3. 逐窗口比对 count / degree / pref 与指法符号。
+
+**结果：28 张谱面、17558 个窗口，决策与指法 100% 逐窗口一致。**
+
+踩过的坑（都别重犯）：
+
+- 宏的 `WIN` 行默认只有 6 位有效数字 → 必须 `setprecision(17)` 导出，否则度差 0.25%；
+- `TS` 是取整毫秒，而它的分组用的是 double 角度 → 要用 `TSX`（精确时间）对比；
+- **末尾哨兵**：宏会把最后一个角度复制一份，所以**最后一个音的度数是前一段间隔**，不是 0；
+- **绝对不要给阈值加容差或贴网格**：谱面真的会产生 719.99982 这种略低于阈值的窗口，
+  抹平它会错误地重置整首手序。忠实做法是原值比较 + 1e-9 容差。
+
+### 还没做的
+
+- ⚠️ **关卡 BPM 的实时来源未验证**：现在读 `scrLevelMaker.bpm_forUnityUseOnly`
+  （`ChartReader.LevelBpm()`），日志会打印 `hand split: N notes, level bpm X`。
+  如果它不是谱面基础 BPM，窗口大小会整体错一档；
+- `count=3` 在 4K 上的指法（上表）是按递归推的，需要用户确认；
+- 实机验证：面板切「拆手序」，看日志 `hand split:` 行与画面。

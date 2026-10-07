@@ -8,6 +8,10 @@ csc.log
 # live in the game folder, not here, but ignore them if one is ever copied over.
 *.cache
 
+# The offline fingering verifier is built by hand from HandPlanner.cs plus
+# tools/HandPlanCheck.cs; only the sources are worth keeping.
+LaneReader/tools/*.exe
+
 # ---- AdoFalling -------------------------------------------------------------
 # A clone of https://github.com/CatciSurn/AdoFalling with its own .git history and
 # its own uncommitted local edits. It is maintained as a separate repository:

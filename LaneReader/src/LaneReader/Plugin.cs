@@ -148,8 +148,29 @@ namespace LaneReader
             if (_showFingering)
             {
                 GUILayout.Label("轨道顺序: D  F  J  K");
-                Slider("轮指窗口 (毫秒)", ref Cfg.RollWindowMs, 40f, 400f, "F0");
-                GUILayout.Label("间隔小于窗口 = 轮指；大于 = 食指交替");
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("手法", GUILayout.Width(200f));
+                if (GUILayout.Button(Cfg.FingeringMode == 1 ? "拆手序" : "AdoFalling 原版",
+                        GUILayout.Width(160f)))
+                    Cfg.FingeringMode = Cfg.FingeringMode == 1 ? 0 : 1;
+                GUILayout.EndHorizontal();
+
+                if (Cfg.FingeringMode == 1)
+                {
+                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
+                    GUILayout.Label("低于它用两指硬抗，高于它开始轮指（建议 800~1100）");
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("轮指方向", GUILayout.Width(200f));
+                    if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
+                            GUILayout.Width(160f)))
+                        Cfg.OuterRoll = !Cfg.OuterRoll;
+                    GUILayout.EndHorizontal();
+                }
+                else
+                {
+                    Slider("轮指窗口 (毫秒)", ref Cfg.RollWindowMs, 40f, 400f, "F0");
+                    GUILayout.Label("间隔小于窗口 = 轮指；大于 = 食指交替");
+                }
             }
             Space();
 
@@ -293,17 +314,58 @@ namespace LaneReader
             }
 
             // Re-plan only when a fingering input actually changed, not every frame.
-            double fingerprint = Chart.Generation * 1000000.0 + Cfg.RollWindowMs * 100.0;
+            double fingerprint = Chart.Generation * 1000000.0 + Cfg.RollWindowMs * 100.0
+                                 + Cfg.FingeringMode * 100000000.0 + Cfg.MaxHardResistBpm
+                                 + (Cfg.OuterRoll ? 1.0 : 2.0);
             if (fingerprint == _planFingerprint)
                 return;
 
             _planFingerprint = fingerprint;
+            if (Cfg.FingeringMode == 1)
+                ApplyHandSplit();
+            else
+                ApplyAdoFalling();
+        }
+
+        /// <summary>The planner this mod has always shipped with; see FingeringPlanner.</summary>
+        private static void ApplyAdoFalling()
+        {
             _plan = FingeringPlanner.Assign(Chart.Notes, Cfg.RollWindowMs);
             Logger.Log(string.Format(
                 "fingering: {0} notes -> roll {1}, tap {2}, window {3:F0}ms, lanes D={4} F={5} J={6} K={7}",
                 Chart.Count, _plan.Rolls, _plan.Taps, _plan.WindowMs,
                 _plan.LaneUse[(int)Finger.LeftMiddle], _plan.LaneUse[(int)Finger.LeftIndex],
                 _plan.LaneUse[(int)Finger.RightIndex], _plan.LaneUse[(int)Finger.RightMiddle]));
+        }
+
+        /// <summary>
+        /// The hand-split planner. It needs the chart's BPM, because its windows are one beat of
+        /// that tempo rather than a fixed number of milliseconds; when the game will not hand the
+        /// BPM over we say so in the log rather than silently fingering the chart off a guess.
+        /// </summary>
+        private static void ApplyHandSplit()
+        {
+            IList<Note> notes = Chart.Notes;
+            var times = new List<double>(notes.Count);
+            for (int i = 0; i < notes.Count; i++)
+                times.Add(notes[i].HitTime);
+
+            double bpm = Chart.LevelBpm();
+            HandPlan plan = HandPlanner.Assign(times, bpm, Cfg.MaxHardResistBpm,
+                2, Cfg.OuterRoll);
+
+            int n = Math.Min(notes.Count, plan.Lanes.Length);
+            for (int i = 0; i < n; i++)
+            {
+                Note note = notes[i];
+                note.Lane = plan.Lanes[i];
+                notes[i] = note;
+            }
+
+            Logger.Log(string.Format(
+                "hand split: {0} notes, level bpm {1:F1}{2}, {3}, {4}, rolls {5}, taps {6}",
+                n, bpm, bpm > 0.0 ? "" : " (unreadable!)", plan.Summary,
+                Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps));
         }
 
         // ------------------------------------------------------------------ drawing

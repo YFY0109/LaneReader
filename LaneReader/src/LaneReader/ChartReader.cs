@@ -852,6 +852,32 @@ namespace LaneReader
         // ------------------------------------------------------------ helpers
 
         /// <summary>
+        /// The level's own BPM (scrLevelMaker.bpm_forUnityUseOnly), or 0 when it cannot be read.
+        ///
+        /// The hand-split planner needs it: its windows are measured in beats of this tempo
+        /// rather than in fixed milliseconds, which is what lets one fingering survive a chart
+        /// that changes speed. This is the chart's base BPM, not the BPM of the tile the planet
+        /// happens to be on.
+        /// </summary>
+        public double LevelBpm()
+        {
+            if (_lmBpm == null)
+                return 0.0;
+
+            try
+            {
+                object v = _lmBpm.IsStatic
+                    ? _lmBpm.GetValue(null)
+                    : _lmBpm.GetValue(ReadStatic(_lmInstance));
+                return ToDouble(v);
+            }
+            catch
+            {
+                return 0.0;
+            }
+        }
+
+        /// <summary>
         /// The game's own position in the chart (scrController.currentSeqID). This is what tells
         /// us which tiles have been played, and it is the only reliable signal: scrFloor.grade
         /// initialises to TooEarly (0), not to a "not judged" sentinel, so a grade-based test
