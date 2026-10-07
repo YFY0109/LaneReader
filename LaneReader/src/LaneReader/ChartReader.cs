@@ -29,6 +29,27 @@ namespace LaneReader
         /// because two genuinely simultaneous taps elsewhere are a different case.
         /// </summary>
         public bool MidSpin;
+
+        /// <summary>
+        /// How long this tile lasts, in beats, taken from the chart's own geometry: the planet's
+        /// turn between this tile and the next, over 180 degrees. A normal tile is one beat, a
+        /// twirl two, a shallower turn less than one.
+        ///
+        /// This is ADOFAI's own notion of a beat, so it needs no BPM at all - which is what lets
+        /// the beat lines follow a chart through its speed changes instead of being pinned to one
+        /// tempo. Verified against a real chart: at 170 BPM a 180-degree tile lasts 352.94 ms,
+        /// exactly one beat, while a 300-degree tile lasts 1.667 beats.
+        /// </summary>
+        public double Beats;
+    }
+
+    /// <summary>One beat line: when it crosses the judgement line, and which beat it is.</summary>
+    public struct BeatLine
+    {
+        public double Time;
+
+        /// <summary>Beat number from the chart's start, used to pick the bar lines.</summary>
+        public int Beat;
     }
 
     /// <summary>The game's own judgement value for a tile (scrFloor.grade / HitMargin).</summary>
@@ -114,6 +135,9 @@ namespace LaneReader
 
         // Current chart.
         private readonly List<Note> _notes = new List<Note>();
+
+        /// <summary>Every beat boundary in the chart, in time order; see <see cref="Note.Beats"/>.</summary>
+        private readonly List<BeatLine> _beatLines = new List<BeatLine>();
         private object _lastFloorList;
         private int _lastFloorCount = -1;
         private double _firstHitTime;
@@ -144,6 +168,9 @@ namespace LaneReader
         private bool _displayTimeValid;
 
         public IList<Note> Notes { get { return _notes; } }
+
+        /// <summary>Beat boundaries for the whole chart, in time order.</summary>
+        public IList<BeatLine> BeatLines { get { return _beatLines; } }
         public int Count { get { return _notes.Count; } }
         public double FirstHitTime { get { return _firstHitTime; } }
         public double LastHitTime { get { return _lastHitTime; } }
@@ -845,8 +872,137 @@ namespace LaneReader
             Plugin.Log("chart seqIds: " + _notes[0].SeqId + ".." +
                        _notes[_notes.Count - 1].SeqId);
 
+            ComputeBeats(log);
+
             if (log)
                 Plugin.Log(_diagnostic);
+        }
+
+        /// <summary>
+        /// Works out each note's length in beats, and the beat lines that follow from it.
+        ///
+        /// A tile lasts one beat per 180 degrees the planet turns between it and the next tile, so
+        /// the chart's own angles give the beat structure directly - no BPM, and therefore no
+        /// dependence on scrLevelMaker.bpm_forUnityUseOnly, which has never been readable here.
+        /// A note spanning more than a beat gets a line interpolated inside it, which is what makes
+        /// the grid stay on the chart's beats through long tiles as well as short ones.
+        /// </summary>
+        private void ComputeBeats(bool log)
+        {
+            _beatLines.Clear();
+            int count = _notes.Count;
+            if (count == 0)
+                return;
+
+            var angles = new double[count];
+            int unreadable = 0;
+            for (int i = 0; i < count; i++)
+            {
+                angles[i] = AngleOf(_notes[i].Floor);
+                if (double.IsNaN(angles[i]))
+                    unreadable++;
+            }
+
+            // The angles may arrive in radians. They are degrees on this install, but a whole-chart
+            // test is cheap and a silent factor of 57 is an ugly thing to debug from a screenshot.
+            bool radians = true;
+            for (int i = 0; i < count; i++)
+            {
+                if (double.IsNaN(angles[i]))
+                    continue;
+                if (Math.Abs(angles[i]) > 6.5)
+                {
+                    radians = false;
+                    break;
+                }
+            }
+
+            double beatAt = 0.0;
+            double minBeats = double.MaxValue;
+            double maxBeats = 0.0;
+            for (int i = 0; i < count; i++)
+            {
+                double a1 = ToDegrees(angles[i], radians);
+                double a2 = i + 1 < count ? ToDegrees(angles[i + 1], radians) : a1;  // sentinel
+                double beats = double.IsNaN(a1) || double.IsNaN(a2)
+                    ? 1.0
+                    : TurnDegrees(a1, a2) / 180.0;
+                if (beats < 1e-4)
+                    beats = 1e-4;
+
+                Note note = _notes[i];
+                note.Beats = beats;
+                _notes[i] = note;
+
+                if (beats < minBeats) minBeats = beats;
+                if (beats > maxBeats) maxBeats = beats;
+
+                if (_beatLines.Count < 20000)
+                {
+                    double t0 = note.HitTime;
+                    double t1 = i + 1 < count ? _notes[i + 1].HitTime : t0;
+                    int k = (int)Math.Ceiling(beatAt - 1e-9);
+                    for (; k < beatAt + beats - 1e-9; k++)
+                    {
+                        var line = new BeatLine();
+                        line.Time = t0 + ((k - beatAt) / beats) * (t1 - t0);
+                        line.Beat = k;
+                        _beatLines.Add(line);
+                    }
+                }
+
+                beatAt += beats;
+            }
+
+            if (log)
+            {
+                Plugin.Log(string.Format(
+                    "beats: {0} tiles, {1:F1} beats, per tile {2:F3}..{3:F3} (avg {4:F3}), " +
+                    "{5} lines, radians={6}, angles unreadable={7}",
+                    count, beatAt, minBeats, maxBeats, beatAt / count,
+                    _beatLines.Count, radians, unreadable));
+            }
+        }
+
+        /// <summary>The tile's own angle (scrFloor.entryangle), or NaN when it cannot be read.</summary>
+        private double AngleOf(object floor)
+        {
+            if (floor == null || _floorEntryAngle == null)
+                return double.NaN;
+            try
+            {
+                return ToDouble(_floorEntryAngle.GetValue(floor));
+            }
+            catch
+            {
+                return double.NaN;
+            }
+        }
+
+        private static double ToDegrees(double angle, bool radians)
+        {
+            if (double.IsNaN(angle))
+                return double.NaN;
+            return radians ? angle * (180.0 / Math.PI) : angle;
+        }
+
+        /// <summary>
+        /// How far the planet turns between two tiles, in degrees, wrapped into (0, 360]. This is
+        /// the reference macro's formula (trackAngleDifference), and it is what turns a pair of tile
+        /// angles into a length in beats.
+        /// </summary>
+        private static double TurnDegrees(double a1, double a2)
+        {
+            return Standardize(Standardize(a1 - 180.0) - a2);
+        }
+
+        /// <summary>Wraps an angle into (0, 360], the range ADOFAI's own angles live in.</summary>
+        private static double Standardize(double angle)
+        {
+            angle = angle % 360.0;
+            if (angle <= 0.0)
+                angle += 360.0;
+            return angle;
         }
 
         // ------------------------------------------------------------ helpers

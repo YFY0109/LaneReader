@@ -61,11 +61,8 @@ namespace LaneReader
         /// <summary>Beats per bar: 4 for 4/4, 3 for 3/4.</summary>
         public int BeatsPerBar = 4;
 
-        /// <summary>Beat tempo for the lines, or 0 to take the chart's own BPM.</summary>
-        public float BeatBpm = 0f;
-
-        /// <summary>Shifts the beat grid by this many beats, to line it up with the music when the
-        /// chart's first tile is not on a downbeat.</summary>
+        /// <summary>Shifts which beat counts as a downbeat, in whole beats. The grid itself is
+        /// anchored to the notes; this only moves the thick lines.</summary>
         public float BeatPhaseBeats = 0f;
 
         /// <summary>Opacity of a beat line; bar lines are drawn stronger than this.</summary>

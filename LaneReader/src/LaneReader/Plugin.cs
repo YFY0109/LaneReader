@@ -43,8 +43,6 @@ namespace LaneReader
 
         // ---- strike feedback: purely time driven, the game's judgement is not read ----
         private static int _chartKey = -1;
-        /// <summary>Chart generation the beat grid was last logged for, so it is logged once.</summary>
-        private static int _beatLogGeneration = -1;
         /// <summary>
         /// How much the note swells at the line. Small on purpose: a big swell reads as a
         /// different object rather than as the same note being struck.
@@ -156,8 +154,7 @@ namespace LaneReader
                 if (Cfg.ShowBeatLines)
                 {
                     IntSlider("每小节拍数 (3=3/4, 4=4/4)", ref Cfg.BeatsPerBar, 2, 8);
-                    Slider("拍速 BPM (0=自动)", ref Cfg.BeatBpm, 0f, 400f, "F0");
-                    Slider("相位偏移 (拍)", ref Cfg.BeatPhaseBeats, -4f, 4f, "F2");
+                    Slider("小节起点偏移 (拍)", ref Cfg.BeatPhaseBeats, -8f, 8f, "F0");
                     Slider("线透明度", ref Cfg.BeatLineAlpha, 0f, 0.6f, "F3");
                     Slider("细线粗细 (px)", ref Cfg.BeatLineThicknessPx, 1f, 8f, "F0");
                     Slider("粗线粗细 (px)", ref Cfg.BarLineThicknessPx, 1f, 12f, "F0");
@@ -368,19 +365,6 @@ namespace LaneReader
                 ApplyHandSplit();
             else
                 ApplyAdoFalling();
-            // The beat grid's tempo is worth one log line per chart: it is the one input the
-            // overlay takes from the game that has never been verified, and a wrong BPM would be
-            // invisible in the picture but obvious here.
-            if (log && Cfg.ShowBeatLines && _beatLogGeneration != Chart.Generation)
-            {
-                _beatLogGeneration = Chart.Generation;
-                double seconds = BeatSeconds();          // also records the source it used
-                Logger.Log(string.Format(
-                    "beat grid: {0:F1} ms/beat from {1} (game bpm {2:F1}, manual {3:F0}), " +
-                    "{4} beats/bar, phase {5:F2}",
-                    seconds > 0.0 ? seconds * 1000.0 : 0.0, _beatSource,
-                    Chart.LevelBpm(), Cfg.BeatBpm, Cfg.BeatsPerBar, Cfg.BeatPhaseBeats));
-            }
         }
 
         /// <summary>The planner this mod has always shipped with; see FingeringPlanner.</summary>
@@ -699,51 +683,66 @@ namespace LaneReader
         }
 
         /// <summary>
-        /// Beat and bar lines: one thin line per beat, a thick one every BeatsPerBar beats. They
-        /// scroll with the notes and are positioned against the same bottom edge the notes arrive
-        /// at, so a line crosses the judgement line exactly on its beat.
+        /// Beat and bar lines: thin on every beat, thick every BeatsPerBar beats.
+        ///
+        /// The beat times come from the chart itself (ChartReader works out a tile's length in
+        /// beats from the planet's turn), so the lines sit on the chart's own beats and follow it
+        /// through accelerations and slowdowns instead of being pinned to one tempo. Each line is
+        /// positioned against the same bottom edge the notes arrive at, so it crosses the judgement
+        /// line exactly on its beat.
         /// </summary>
         private static void DrawBeatLines(float refScale, float screenW, float x0, float total,
             float judgeY, float speed, float noteH, double now)
         {
-            double beat = BeatSeconds();
-            if (beat <= 0.0001)
+            IList<BeatLine> lines = Chart.BeatLines;
+            if (lines.Count == 0)
                 return;
 
             int perBar = Mathf.Clamp(Cfg.BeatsPerBar, 2, 16);
+            int downbeat = Mathf.RoundToInt(Cfg.BeatPhaseBeats);
             float boxBottom = judgeY + noteH * 0.5f;
-            double phase = Cfg.BeatPhaseBeats * beat;
             double topTime = now + boxBottom / speed;      // the time at the top of the screen
-
-            int first = (int)Math.Floor((now - phase) / beat);
-            int last = (int)Math.Ceiling((topTime - phase) / beat);
-            if (last - first > 4096)
-                return;                                    // an absurd tempo; never loop forever
 
             float left = Cfg.BeatLineFullWidth ? 0f : x0;
             float width = Cfg.BeatLineFullWidth ? screenW : total;
 
-            for (int k = first; k <= last; k++)
+            for (int index = FirstLineAtOrAfter(lines, now); index < lines.Count; index++)
             {
-                bool bar = ((k % perBar) + perBar) % perBar == 0;
+                BeatLine line = lines[index];
+                if (line.Time > topTime)
+                    break;
+
+                int beat = line.Beat + downbeat;
+                bool bar = ((beat % perBar) + perBar) % perBar == 0;
                 float thick = Mathf.Max(1f,
                     (bar ? Cfg.BarLineThicknessPx : Cfg.BeatLineThicknessPx) * refScale);
                 float alpha = bar ? Mathf.Min(1f, Cfg.BeatLineAlpha * 1.8f) : Cfg.BeatLineAlpha;
 
-                float y = boxBottom - (float)((k * beat + phase - now) * speed);
+                float y = boxBottom - (float)((line.Time - now) * speed);
                 Fill(new Rect(left, y, width, thick), Ink(alpha));
             }
         }
 
+        /// <summary>Binary search for the first beat line at or after <paramref name="time"/>.</summary>
+        private static int FirstLineAtOrAfter(IList<BeatLine> lines, double time)
+        {
+            int lo = 0;
+            int hi = lines.Count;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (lines[mid].Time < time)
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            return lo;
+        }
+
         /// <summary>
-        /// Seconds per beat for the beat lines: the manual override when it is set, otherwise the
-        /// chart's own BPM. Values outside a plausible range are refused rather than turned into a
-        /// silly grid; the log prints what the game handed over, so a wrong one is visible.
-        /// </summary>
-        /// <summary>
-        /// The chart's BPM, with the fallbacks the beat grid and the hand-split planner share: the
-        /// game's own value when it is usable, otherwise a guess from the note spacing. 0 means
-        /// neither worked, and <paramref name="source"/> says which one answered.
+        /// The chart's BPM, with the fallbacks the hand-split planner uses: the game's own value
+        /// when it is usable, otherwise a guess from the note spacing. 0 means neither worked, and
+        /// <paramref name="source"/> says which one answered.
         /// </summary>
         private static double ChartBpm(out string source)
         {
@@ -757,30 +756,6 @@ namespace LaneReader
             }
             return bpm;
         }
-
-        /// <summary>
-        /// Seconds per beat for the beat lines: the manual override when it is set, otherwise
-        /// <see cref="ChartBpm"/>. The guess exists because the game's BPM has been unreadable on
-        /// this install, and without it the beat lines simply never drew.
-        /// </summary>
-        private static double BeatSeconds()
-        {
-            if (Cfg.BeatBpm > 0.01f && Cfg.BeatBpm < 1000f)
-            {
-                _beatSource = "manual";
-                return 60.0 / Cfg.BeatBpm;
-            }
-
-            string source;
-            double bpm = ChartBpm(out source);
-            _beatSource = source;
-            if (bpm < 20.0 || bpm > 1000.0)
-                return 0.0;
-            return 60.0 / bpm;
-        }
-
-        /// <summary>Which source <see cref="BeatSeconds"/> last used, for the log.</summary>
-        private static string _beatSource = "none";
 
         // ------------------------------------------------------------------ logging
 
