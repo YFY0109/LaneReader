@@ -241,6 +241,7 @@ namespace LaneReader
             Header("其它");
             if (GUILayout.Button("切换键: " + Cfg.Key, GUILayout.Width(200f)))
                 Cfg.ToggleKey = NextKey(Cfg.ToggleKey);
+            Toggle("显示帧数 (判定线下方)", ref Cfg.ShowFps);
             Toggle("输出诊断日志", ref Cfg.DebugLog);
             Space();
 
@@ -317,6 +318,8 @@ namespace LaneReader
             if (Cfg == null)
                 return;
 
+            MeasureFrameRate();
+
             if (Input.GetKeyDown(Cfg.Key))
             {
                 _hidden = !_hidden;
@@ -374,10 +377,11 @@ namespace LaneReader
 
             if (log)
             {
-                float refScale = Mathf.Max(0.5f, Screen.height / 1080f);
+                float refScale = RefScale();
                 bool frame = Chart.LevelStanding();
-                Logger.Log("frame: " + Chart.FrameDiag(Cfg.NoteSpeedPxPerSec * refScale,
-                    Screen.height, frozen, frame, NotesVisible(frame)));
+                Logger.Log("frame: " + FrameRateText() + " | " + Chart.FrameDiag(
+                    Cfg.NoteSpeedPxPerSec * refScale, Screen.height, frozen, frame,
+                    NotesVisible(frame)));
             }
 
             // Re-plan only when a fingering input actually changed, not every frame.
@@ -439,6 +443,42 @@ namespace LaneReader
                 n, bpm, bpm > 0.0 ? "" : " (unreadable!)", plan.Summary,
                 Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps,
                 CountHandSwitches(plan)));
+        }
+
+        // ------------------------------------------------------------------ frame rate
+
+        /// <summary>Frames counted since the last frame-rate sample.</summary>
+        private static int _fpsFrames;
+        private static float _fpsElapsed;
+        private static float _fps = -1f;
+        private static float _frameMs = -1f;
+
+        /// <summary>
+        /// Counts frames and re-samples the rate twice a second.
+        ///
+        /// Tick runs from a postfix on the game's own Update, so this is the game's frame rate, not
+        /// a rate of our own - the overlay has no loop to have one. Averaging over half a second
+        /// keeps the number readable instead of flickering between neighbouring values.
+        /// </summary>
+        private static void MeasureFrameRate()
+        {
+            _fpsFrames++;
+            _fpsElapsed += Time.unscaledDeltaTime;
+            if (_fpsElapsed < 0.5f || _fpsFrames <= 0)
+                return;
+
+            _fps = _fpsFrames / _fpsElapsed;
+            _frameMs = _fpsElapsed * 1000f / _fpsFrames;
+            _fpsFrames = 0;
+            _fpsElapsed = 0f;
+        }
+
+        /// <summary>"143 fps  7.0 ms", or a placeholder until the first sample lands.</summary>
+        private static string FrameRateText()
+        {
+            if (_fps < 0f)
+                return "-";
+            return string.Format("{0:F0} fps  {1:F1} ms", _fps, _frameMs);
         }
 
         // ------------------------------------------------------------------ drawing
@@ -650,6 +690,22 @@ namespace LaneReader
                     Fill(new Rect(x, top, t, noteH), box);                       // left edge
                     Fill(new Rect(x + laneW - t, top, t, noteH), box);           // right edge
                 }
+            }
+
+            // ---- frame rate ------------------------------------------------------
+            // Under the judgement line, so it never covers the playfield. Drawn with the frame, so
+            // it is there on the pre-start prompt too. It sits below the key labels when those are
+            // on; notes and the strike pop all stay at boxBottom and above, so nothing is hidden by
+            // it.
+            if (Cfg.ShowFps)
+            {
+                var fpsStyle = new GUIStyle(GUI.skin.label);
+                fpsStyle.fontSize = Mathf.RoundToInt(16f * refScale);
+                fpsStyle.alignment = TextAnchor.UpperCenter;
+                fpsStyle.normal.textColor = Ink(0.7f);
+
+                float fpsTop = judgeY + (Cfg.ShowKeyLabels ? 34f : 6f) * refScale;
+                GUI.Label(new Rect(0f, fpsTop, w, 22f * refScale), FrameRateText(), fpsStyle);
             }
 
             // Frame only: the pre-start prompt stops here.

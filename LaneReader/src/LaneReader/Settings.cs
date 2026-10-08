@@ -87,6 +87,12 @@ namespace LaneReader
         /// <summary>Lane background opacity. 0 removes the fill and leaves only the lane edges.</summary>
         public float LaneOpacity = 0.06f;
 
+        /// <summary>
+        /// Draw the frame rate (and the frame time) under the judgement line. Off by default: it is
+        /// a diagnostic, not part of the playfield. See <see cref="Plugin.FrameRateText"/>.
+        /// </summary>
+        public bool ShowFps = false;
+
         /// <summary>Beat lines: a thin line on every beat and a thick one every
         /// <see cref="BeatsPerBar"/> beats, scrolling with the notes.</summary>
         public bool ShowBeatLines = true;
