@@ -165,7 +165,6 @@ namespace LaneReader
             Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
             Slider("判定线高度", ref Cfg.JudgeLineY, 0f, 1f, "F2");
             Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
-            Slider("垂直偏移 (px)", ref Cfg.OffsetYPx, -800f, 800f, "F0");
             Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 0.5f, "F3");
             Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 2000f, "F0");
             Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
@@ -546,7 +545,7 @@ namespace LaneReader
         private static Vector2 Pivot()
         {
             float refScale = RefScale();
-            float judgeY = Screen.height * (1f - Mathf.Clamp01(Cfg.JudgeLineY)) + Cfg.OffsetYPx * refScale;
+            float judgeY = Screen.height * (1f - Mathf.Clamp01(Cfg.JudgeLineY));
             return new Vector2(Screen.width * 0.5f + Cfg.OffsetXPx * refScale, judgeY);
         }
 
@@ -571,24 +570,29 @@ namespace LaneReader
             float total = FingeringPlanner.FingerCount * laneW + (FingeringPlanner.FingerCount - 1) * laneGap;
             float x0 = (w - total) * 0.5f + Cfg.OffsetXPx * refScale;
 
-            float judgeY = h * (1f - Mathf.Clamp01(Cfg.JudgeLineY)) + Cfg.OffsetYPx * refScale;
+            float judgeY = h * (1f - Mathf.Clamp01(Cfg.JudgeLineY));
             float speed = Mathf.Max(1f, Cfg.NoteSpeedPxPerSec * refScale);
             float noteH = Mathf.Max(2f, Cfg.NoteHeightPx * refScale);
+
+            // ---- playfield geometry ---------------------------------------------
+            // The lane length is its own setting (LaneLengthPx), not "whatever is left above the
+            // judgement line": deriving it from the line meant every change to the line height or
+            // the rotation silently re-stretched the lanes. 0 asks for the old behaviour (all the
+            // way to the screen edge); otherwise the lanes are exactly that long and ride up and
+            // down with the line.
+            //
+            // laneTop is also the top of the visible playfield: notes and beat lines come into
+            // being there rather than at the screen edge, so a pinned lane length really does
+            // decide how much of the fall you get to see.
+            float laneLen = Cfg.LaneLengthPx > 0f ? Cfg.LaneLengthPx * refScale : judgeY;
+            float laneTop = judgeY - laneLen;
 
             Color left = Palette[Cfg.ColourPreset % Palette.Length];
             Color right = Palette[(Cfg.ColourPreset + 1) % Palette.Length];
 
             // ---- lanes ----------------------------------------------------------
-            // The lane length is its own setting (LaneLengthPx), not "whatever is left above the
-            // judgement line": deriving it from the line meant every change to the line height,
-            // the vertical offset or the rotation silently re-stretched the lanes. 0 asks for the
-            // old behaviour (up to the screen edge); otherwise the lanes are exactly that long and
-            // ride up and down with the line.
             if (Cfg.ShowLanes)
             {
-                float laneLen = Cfg.LaneLengthPx > 0f ? Cfg.LaneLengthPx * refScale : judgeY;
-                float laneTop = judgeY - laneLen;
-
                 Color body = Ink(Cfg.LaneOpacity);
                 Color edge = Ink(0.28f);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
@@ -607,7 +611,7 @@ namespace LaneReader
             // they are a reading aid, not a playfield element. They scroll with the clock, so the
             // pre-start prompt (which draws the frame only) leaves them out.
             if (drawNotes && Cfg.ShowBeatLines && Chart.Ready)
-                DrawBeatLines(refScale, w, x0, total, judgeY, speed, noteH, now);
+                DrawBeatLines(refScale, w, x0, total, judgeY, laneTop, speed, noteH, now);
 
             // ---- judgement line -------------------------------------------------
             if (Cfg.ShowJudgeLine)
@@ -672,7 +676,11 @@ namespace LaneReader
                 // Falling note: its bottom edge travels down to the box bottom.
                 float y = boxBottom - noteH - (float)((note.HitTime - now) * speed);
 
-                if (y + noteH < 0f || y > boxBottom + noteH * 2f)
+                // The note comes into being at the top of the lane, not at the screen edge: with a
+                // pinned lane length the lane top is above the screen's, so a note simply appears
+                // fully formed there (the same thing the lane bodies do). y only grows towards the
+                // line, so once a note is fully below the top it stays drawn.
+                if (y < laneTop || y > boxBottom + noteH * 2f)
                     continue;
 
                 float x = x0 + note.Lane * (laneW + laneGap);
@@ -793,10 +801,11 @@ namespace LaneReader
         /// beats from the planet's turn), so the lines sit on the chart's own beats and follow it
         /// through accelerations and slowdowns instead of being pinned to one tempo. Each line is
         /// positioned against the same bottom edge the notes arrive at, so it crosses the judgement
-        /// line exactly on its beat.
+        /// line exactly on its beat, and it is only drawn from <paramref name="laneTop"/> downwards -
+        /// the same top edge the notes appear at.
         /// </summary>
         private static void DrawBeatLines(float refScale, float screenW, float x0, float total,
-            float judgeY, float speed, float noteH, double now)
+            float judgeY, float laneTop, float speed, float noteH, double now)
         {
             IList<BeatLine> lines = Chart.BeatLines;
             if (lines.Count == 0)
@@ -805,7 +814,7 @@ namespace LaneReader
             int perBar = Mathf.Clamp(Cfg.BeatsPerBar, 2, 16);
             int downbeat = Mathf.RoundToInt(Cfg.BeatPhaseBeats);
             float boxBottom = judgeY + noteH * 0.5f;
-            double topTime = now + boxBottom / speed;      // the time at the top of the screen
+            double topTime = now + (boxBottom - laneTop) / speed;   // the time at the top of the lane
 
             float left = Cfg.BeatLineFullWidth ? 0f : x0;
             float width = Cfg.BeatLineFullWidth ? screenW : total;
@@ -823,6 +832,12 @@ namespace LaneReader
                 float alpha = bar ? Mathf.Min(1f, Cfg.BeatLineAlpha * 1.8f) : Cfg.BeatLineAlpha;
 
                 float y = boxBottom - (float)((line.Time - now) * speed);
+
+                // Lines are walked in time order and y only decreases, so the first one above the
+                // lane top ends the loop.
+                if (y < laneTop)
+                    break;
+
                 Fill(new Rect(left, y, width, thick), Ink(alpha));
             }
         }

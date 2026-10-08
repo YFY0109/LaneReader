@@ -79,9 +79,10 @@ namespace LaneReader
         /// <summary>Horizontal shift of the whole overlay, in reference pixels (1080p).</summary>
         public float OffsetXPx = 0f;
 
-        /// <summary>Vertical shift of the judgement line, in reference pixels (1080p). The notes,
-        /// boxes and beat lines follow it, since they are all anchored to that line.</summary>
-        public float OffsetYPx = 0f;
+        // There used to be an OffsetYPx here as well. It was dropped: it moved the judgement line
+        // by pixels while JudgeLineY moves the same line by a fraction of the screen, so the two
+        // controls were the same feature twice. JudgeLineY is the one that stayed, and it is the
+        // only vertical control now (the rotation pivot follows it too).
 
         /// <summary>Lane background opacity. 0 removes the fill and leaves only the lane edges.</summary>
         public float LaneOpacity = 0.06f;
