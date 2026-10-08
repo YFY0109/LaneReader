@@ -84,7 +84,8 @@ namespace LaneReader
         // controls were the same feature twice. JudgeLineY is the one that stayed, and it is the
         // only vertical control now (the rotation pivot follows it too).
 
-        /// <summary>Lane background opacity. 0 removes the fill and leaves only the lane edges.</summary>
+        /// <summary>Lane background opacity, 0..1 (the panel shows all of it: 1 = fully opaque).
+        /// 0 removes the fill and leaves only the lane edges.</summary>
         public float LaneOpacity = 0.06f;
 
         /// <summary>

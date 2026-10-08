@@ -165,7 +165,7 @@ namespace LaneReader
             Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
             Slider("判定线高度", ref Cfg.JudgeLineY, 0f, 1f, "F2");
             Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
-            Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 0.5f, "F3");
+            Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
             Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 2000f, "F0");
             Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
             Space();
