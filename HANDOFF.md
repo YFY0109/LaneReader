@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 ---
 
-## 4. 架构：六个文件
+## 4. 架构：七个文件
 
 ### `Plugin.cs` — 入口 + 渲染 + 设置面板
 
@@ -112,6 +112,12 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 ### `HandPlanner.cs` — 拆手序（可选手法）
 
 移植 ReADOFAIMacro（MIT）的按键分配算法，只依赖音符时间，不碰 Unity。详见 §14。
+
+---
+
+### `NoteImage.cs` — 自定义音符贴图
+
+从磁盘读 png/jpg 当音符画，带热重载与失败状态显示。详见 §16。
 
 ---
 
@@ -536,3 +542,64 @@ float cbpm = floor.nextfloor ? (float)(60.0 / (floor.nextfloor.entryTime - floor
 > ```
 > **自检方法**：`from tbpm` 占多数 → TBPM 读到了；`tbpm 0.0` → 三个字段都没读到，网格会
 > 退到几何或一砖一拍。`sampled k/N` 会随打歌推进增长（这是「边打边学」的进度）。
+
+## 16. 自定义音符图片 + 整体旋转（新增）
+
+### 16.1 自定义音符图片（`NoteImage.cs`）
+
+| 设置 | 说明 |
+|---|---|
+| 用自定义图片 | 总开关，默认**关**（关着时与旧版完全一致） |
+| 图片路径 | 默认 `note.png`。**相对路径基于 mod 目录**（`Mods\LaneReader\`），也接受绝对路径；带引号会自动去掉 |
+| 保持宽高比 | 默认开。按「contain」缩放并居中；关掉则拉伸到音符框（`轨道宽 × 音符高`，默认 110×26 @1080p，很扁，方形图会被压扁） |
+| 用左右手颜色着色 | 默认关。图片本身带颜色时不用开；开了就用 `Palette` 色 `GUI.color` 染色 |
+| 状态行 | 显示「已加载 宽x高 / 找不到文件 / 解码失败」 |
+
+实现要点：
+
+- 画法是 `FillNote()` 里把内层色块**换成 `GUI.DrawTexture`**，外框逻辑一字未改，所以
+  边框、亮暗背景反色、打击弹跳（放大缩小 + 淡出）全部照旧生效。
+- **alpha 一定参与**：即使不开染色，`GUI.color` 也乘上音符自己的 alpha
+  （`new Color(1,1,1,c.a)`），否则打击弹跳的淡出对图片失效。
+- 图片自带的 alpha 由贴图给出，`Format32bppArgb` 的 png 直接生效；jpg 无 alpha。
+- **热重载**：最多每 1 秒检查一次，且只在文件修改时间变化时重读 —— 换图不用重启游戏，
+  文件不存在时也不会每帧刷日志。面板上的「重新加载」按钮强制重读。
+- 贴图 `hideFlags = HideAndDontSave`，替换时 `Object.Destroy` 旧的。
+
+> 演示图：安装目录里的 `note.png`（256×64 圆角胶囊，填充 alpha 190 → 圆角外全透明），
+> 直接开「用自定义图片」就能验 alpha。
+
+### 16.2 整体旋转（`RotationDegrees`，0~360）
+
+- 面板「布局」里的「整体旋转 (度)」滑块，0~360，默认 0。
+- 实现是 `GUIUtility.RotateAroundPivot(角度, Pivot())` 包住整个 `DrawOverlay()`，
+  在 `finally` 里恢复 `GUI.matrix`，**设置面板本身不受影响**。
+- **轴心 = 判定线中点**（`屏幕中线 + 水平偏移`，`判定线高度 + 垂直偏移`）。
+  整个叠加层本来就锚在判定线上，绕它转时判定线留在原地。
+- 旋转是 Unity 的屏幕坐标方向（y 向下），所以正角度看起来是**顺时针**。
+
+### 16.3 踩坑：Unity 6 的 `ImageConversion.LoadImage` 编不过（CS0012）
+
+```csharp
+ImageConversion.LoadImage(texture, bytes);   // error CS0012
+// 类型"System.ReadOnlySpan<T0>"在未被引用的程序集中定义…
+```
+
+Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, ReadOnlySpan<byte>)`
+重载。重载决议要先解析 `ReadOnlySpan<T>`，而它的实现在 `netstandard.dll` 后面 ——
+本机这台 **C# 5 版 csc** 解析不了，于是**连 `byte[]` 那个重载都编不过**。
+
+试过但**没用**的办法：`/reference:...\System.Memory.dll`（仍然是 CS0012），
+换成静态调用 `ImageConversion.LoadImage(...)`（一样），把 `byte[]` 强转（没得转）。
+试过**有效**的办法：`NoteImage.Decode()` 里**反射找那个 2 参数 `byte[]` 重载**并缓存 `MethodInfo`。
+
+- 先 `type.GetMethod("LoadImage", new Type[]{ typeof(Texture2D), typeof(byte[]) })`；
+- Unity 里这条**可能**直接抛 `TypeLoadException`（本机 .NET Framework 下实测就抛），
+  所以外面要 `try/catch`，抛了就走扫描：`GetMethods()` 逐个看名字 + 参数表，
+  **每个 `GetParameters()` 单独 try/catch**（本机实测 4 个重载里正好 2 个读参数表就抛）。
+- 别再用「按名字取第一个」的写法：顺序不保证。
+
+## 17. 变更记录（本节之后的东西）
+
+- 2026-10-07：加自定义音符图片与整体旋转（§16）；dll 41,984 字节。
+

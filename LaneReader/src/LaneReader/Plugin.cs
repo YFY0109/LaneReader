@@ -30,6 +30,9 @@ namespace LaneReader
         internal static Settings Cfg;
         internal static Harmony Harmony;
 
+        /// <summary>The mod's own folder, so a relative note-image path can be resolved against it.</summary>
+        internal static string ModPath;
+
         private static readonly ChartReader Chart = new ChartReader();
         private static FingeringPlanner.Result _plan;
         private static double _planFingerprint = double.NaN;
@@ -67,6 +70,7 @@ namespace LaneReader
         public static bool Load(UnityModManager.ModEntry modEntry)
         {
             Logger = modEntry.Logger;
+            ModPath = modEntry.Path;
             Cfg = Settings.Load(modEntry);
 
             modEntry.OnGUI = OnGui;
@@ -127,6 +131,24 @@ namespace LaneReader
             Toggle("轨道", ref Cfg.ShowLanes);
             Toggle("判定线", ref Cfg.ShowJudgeLine);
             Toggle("音符", ref Cfg.ShowNotes);
+            if (Cfg.ShowNotes)
+            {
+                Toggle("用自定义图片", ref Cfg.NoteImageEnabled);
+                if (Cfg.NoteImageEnabled)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("图片路径", GUILayout.Width(200f));
+                    Cfg.NoteImagePath = GUILayout.TextField(Cfg.NoteImagePath, GUILayout.Width(320f));
+                    if (GUILayout.Button("重新加载", GUILayout.Width(90f)))
+                        NoteImage.Invalidate();
+                    GUILayout.EndHorizontal();
+                    GUILayout.Label("相对路径基于 mod 目录，例: note.png = " + ModPath + "\\note.png");
+                    Toggle("保持宽高比", ref Cfg.NoteImageKeepAspect);
+                    Toggle("用左右手颜色着色", ref Cfg.NoteImageTint);
+                    NoteImage.Get(Cfg.NoteImagePath);            // refreshes the status line in place
+                    GUILayout.Label("状态: " + NoteImage.Status);
+                }
+            }
 
             Toggle("键位标签 D F J K", ref Cfg.ShowKeyLabels);
             Toggle("判定框", ref Cfg.ShowJudgeBoxes);
@@ -145,6 +167,7 @@ namespace LaneReader
             Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
             Slider("垂直偏移 (px)", ref Cfg.OffsetYPx, -800f, 800f, "F0");
             Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 0.5f, "F3");
+            Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
             Space();
 
             _showBeat = Fold("小节线", _showBeat);
@@ -488,8 +511,15 @@ namespace LaneReader
                 return;
 
             _originalFont = GUI.skin.font;
+            Matrix4x4 savedMatrix = GUI.matrix;
             try
             {
+                // The whole overlay turns as one piece, about the middle of its judgement line, so
+                // the pivot stays put and only the angle changes. The settings panel is drawn
+                // elsewhere and is unaffected.
+                if (Cfg.RotationDegrees != 0f)
+                    GUIUtility.RotateAroundPivot(Cfg.RotationDegrees, Pivot());
+
                 DrawOverlay(notes);
             }
             catch (Exception ex)
@@ -502,8 +532,27 @@ namespace LaneReader
             }
             finally
             {
+                GUI.matrix = savedMatrix;
                 GUI.skin.font = _originalFont;
             }
+        }
+
+        /// <summary>
+        /// The point the overlay rotates about: the centre of the judgement line, which is also
+        /// the centre of the four lanes. Everything the overlay draws is anchored to that line, so
+        /// rotating about it keeps the playfield in the same place on screen.
+        /// </summary>
+        private static Vector2 Pivot()
+        {
+            float refScale = RefScale();
+            float judgeY = Screen.height * (1f - Mathf.Clamp01(Cfg.JudgeLineY)) + Cfg.OffsetYPx * refScale;
+            return new Vector2(Screen.width * 0.5f + Cfg.OffsetXPx * refScale, judgeY);
+        }
+
+        /// <summary>Pixels per 1080p reference pixel.</summary>
+        private static float RefScale()
+        {
+            return Mathf.Max(0.5f, Screen.height / 1080f);
         }
 
         /// <summary>
@@ -512,7 +561,7 @@ namespace LaneReader
         /// </summary>
         private static void DrawOverlay(bool drawNotes)
         {
-            float refScale = Mathf.Max(0.5f, Screen.height / 1080f);
+            float refScale = RefScale();
             float w = Screen.width;
             float h = Screen.height;
 
@@ -663,27 +712,57 @@ namespace LaneReader
         /// Fills a note, with a darker outline when the outline is enabled. The block is drawn in
         /// the darkened colour and the note's own colour is inset on top of it, so a note keeps
         /// exactly the footprint it has without an outline.
+        ///
+        /// With a custom image the outline is drawn the same way and the sprite replaces the inner
+        /// block, contained in it. The image carries its own alpha; the note's alpha (which is what
+        /// makes a struck note fade out) is multiplied on top of it through GUI.color.
         /// </summary>
         private static void FillNote(Rect r, Color c, float refScale)
         {
-            if (!Cfg.ShowNoteBorder)
-            {
-                Fill(r, c);
-                return;
-            }
+            Texture2D image = Cfg.NoteImageEnabled ? NoteImage.Get(Cfg.NoteImagePath) : null;
 
             float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
-            if (r.width <= b * 2f || r.height <= b * 2f)
+            bool border = Cfg.ShowNoteBorder && r.width > b * 2f && r.height > b * 2f;
+
+            if (image == null)
             {
-                Fill(r, c);                       // too small to hold an outline
+                if (!border)
+                {
+                    Fill(r, c);
+                    return;
+                }
+
+                // The opposite of the background rather than a darker shade of the note: on a dark
+                // level the outline is white, on a light one black, so a note always separates from
+                // whatever is behind it and from its neighbours.
+                Fill(r, Ink(c.a));
+                Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
                 return;
             }
 
-            // The opposite of the background rather than a darker shade of the note: on a dark
-            // level the outline is white, on a light one black, so a note always separates from
-            // whatever is behind it and from its neighbours.
-            Fill(r, Ink(c.a));
-            Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
+            if (border)
+            {
+                Fill(r, Ink(c.a));
+                r = new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b);
+            }
+
+            if (Cfg.NoteImageKeepAspect)
+            {
+                float aspect = image.height > 0 ? (float)image.width / image.height : 1f;
+                float iw = r.height * aspect;
+                float ih = r.height;
+                if (iw > r.width)
+                {
+                    iw = r.width;
+                    ih = aspect > 0f ? r.width / aspect : r.height;
+                }
+                r = new Rect(r.x + (r.width - iw) * 0.5f, r.y + (r.height - ih) * 0.5f, iw, ih);
+            }
+
+            Color prev = GUI.color;
+            GUI.color = Cfg.NoteImageTint ? c : new Color(1f, 1f, 1f, c.a);
+            GUI.DrawTexture(r, image, ScaleMode.StretchToFill, true);
+            GUI.color = prev;
         }
 
         /// <summary>

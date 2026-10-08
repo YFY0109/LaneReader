@@ -1,0 +1,14 @@
+﻿LaneReader (4K view) 0.3.0  —— 安装说明
+
+1. 确认已装 UnityModManager 0.32.4（ADOFAI 3.3.1 / Mono）
+2. 把本文件夹（LaneReader）整个放进  <游戏目录>\Mods\
+   最终应为  <游戏目录>\Mods\LaneReader\LaneReader.dll + Info.json
+3. 启动游戏，UMM 的 mod 列表里出现 "LaneReader (4K view)"
+4. 设置面板在 UMM 的 mod 设置里；按 F8 显示/隐藏叠加层
+
+自定义音符图片:
+   把 png/jpg 放到本文件夹，面板「显示 → 音符 → 用自定义图片」打开，
+   路径默认 note.png（相对路径基于本文件夹，也可填绝对路径）。
+   本文件夹里的 note.png 是一张演示图，可以直接开来试。
+
+项目主页与说明: https://github.com/fallingCB/LaneReader

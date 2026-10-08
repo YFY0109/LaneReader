@@ -38,6 +38,26 @@ namespace LaneReader
         /// <summary>Outline thickness, in reference pixels (1080p).</summary>
         public float NoteBorderPx = 2f;
 
+        /// <summary>Draw a png/jpg from disk as the falling note instead of the flat block.
+        /// See <see cref="NoteImage"/>.</summary>
+        public bool NoteImageEnabled = false;
+
+        /// <summary>The note sprite. Relative paths resolve against the mod's own folder, so
+        /// "note.png" means Mods/LaneReader/note.png.</summary>
+        public string NoteImagePath = "note.png";
+
+        /// <summary>Paint the sprite in the hand's colour instead of its own. Off by default:
+        /// an image is usually already the colour its author wanted.</summary>
+        public bool NoteImageTint = false;
+
+        /// <summary>How the sprite is fitted to the note's box: true keeps its aspect ratio
+        /// (contained and centred), false stretches it to the box.</summary>
+        public bool NoteImageKeepAspect = true;
+
+        /// <summary>Clockwise rotation of the whole overlay, in degrees. The overlay turns about
+        /// the middle of its judgement line, so the pivot does not move with the angle.</summary>
+        public float RotationDegrees = 0f;
+
         /// <summary>Fall speed, in reference pixels per second at 1080p. The default is the speed
         /// this mod has settled on with its player: 620 raised by half.</summary>
         public float NoteSpeedPxPerSec = 930f;
