@@ -59,12 +59,22 @@ namespace LaneReader
         public float RotationDegrees = 0f;
 
         /// <summary>Fall speed, in reference pixels per second at 1080p. The default is the speed
-        /// this mod has settled on with its player: 620 raised by half.</summary>
-        public float NoteSpeedPxPerSec = 930f;
+        /// this mod has settled on with its player.</summary>
+        public float NoteSpeedPxPerSec = 1000f;
         public float NoteHeightPx = 26f;
         public float LaneWidthPx = 110f;
         public float LaneGapPx = 8f;
         public float JudgeLineY = 0.18f;
+
+        /// <summary>
+        /// How far the lanes run from the judgement line towards the top of the screen, in
+        /// reference pixels (1080p). This is a number of its own on purpose: the lanes used to be
+        /// drawn all the way to the screen edge, which silently re-stretched every lane whenever
+        /// the judgement line height, the vertical offset or the rotation changed. 0 keeps that old
+        /// behaviour (lanes to the screen edge); any positive value pins the length, so moving the
+        /// line moves the lanes with it instead of changing how long they are.
+        /// </summary>
+        public float LaneLengthPx = 900f;
 
         /// <summary>Horizontal shift of the whole overlay, in reference pixels (1080p).</summary>
         public float OffsetXPx = 0f;
@@ -127,11 +137,14 @@ namespace LaneReader
         /// <summary>
         /// The hard-resist limit the hand-split planner works against: passing it halves the
         /// window, which is how the reference implementation rolls more the lower it is set.
-        /// 506 is the value the mod was tuned to in real play (see HANDOFF §14, "已知良好状态"):
-        /// with the level BPM unreadable the planner starts from its own 800 BPM fallback, so 506
-        /// halves it to 400 - the setting that produced 75% hand switching on a real chart.
+        ///
+        /// 850 is what the player asked this default to be. Note what it does to the base BPM when
+        /// the level BPM is unreadable (the normal case on this install): the planner's own fallback
+        /// normalises to 800, and 800 is NOT above 850, so nothing is halved and the base stays 800 -
+        /// half the base the mod shipped with (506 halved it to 400), which halves every window's
+        /// press count and therefore rolls far less. See HANDOFF §14.
         /// </summary>
-        public float MaxHardResistBpm = 506f;
+        public float MaxHardResistBpm = 850f;
 
         /// <summary>
         /// Roll direction: true starts each hand on its middle finger (K J D F, the "outer"

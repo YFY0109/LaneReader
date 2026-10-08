@@ -167,6 +167,7 @@ namespace LaneReader
             Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
             Slider("垂直偏移 (px)", ref Cfg.OffsetYPx, -800f, 800f, "F0");
             Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 0.5f, "F3");
+            Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 2000f, "F0");
             Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
             Space();
 
@@ -578,16 +579,24 @@ namespace LaneReader
             Color right = Palette[(Cfg.ColourPreset + 1) % Palette.Length];
 
             // ---- lanes ----------------------------------------------------------
+            // The lane length is its own setting (LaneLengthPx), not "whatever is left above the
+            // judgement line": deriving it from the line meant every change to the line height,
+            // the vertical offset or the rotation silently re-stretched the lanes. 0 asks for the
+            // old behaviour (up to the screen edge); otherwise the lanes are exactly that long and
+            // ride up and down with the line.
             if (Cfg.ShowLanes)
             {
+                float laneLen = Cfg.LaneLengthPx > 0f ? Cfg.LaneLengthPx * refScale : judgeY;
+                float laneTop = judgeY - laneLen;
+
                 Color body = Ink(Cfg.LaneOpacity);
                 Color edge = Ink(0.28f);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
                     float x = x0 + i * (laneW + laneGap);
-                    Fill(new Rect(x, 0f, laneW, judgeY), body);
-                    Fill(new Rect(x, 0f, 2f, judgeY), edge);
-                    Fill(new Rect(x + laneW - 2f, 0f, 2f, judgeY), edge);
+                    Fill(new Rect(x, laneTop, laneW, laneLen), body);
+                    Fill(new Rect(x, laneTop, 2f, laneLen), edge);
+                    Fill(new Rect(x + laneW - 2f, laneTop, 2f, laneLen), edge);
                 }
             }
 
