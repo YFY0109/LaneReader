@@ -197,7 +197,7 @@ namespace LaneReader
 
                 if (Section("轨道", ref _showColourLane))
                 {
-                    ColourToggle("四轨单独配置", ref Cfg.LaneSeparate);
+                    ColourToggle("轨道底色", ref Cfg.LaneSeparate);
                     if (Cfg.LaneSeparate)
                     {
                         for (int i = 0; i < 4; i++)
@@ -210,7 +210,7 @@ namespace LaneReader
                     Slider("轨道底色总透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
                     GUILayout.Label("总透明度会乘在颜色的 alpha 上（默认 0.06，所以颜色 A 拉满也很淡）。");
 
-                    ColourToggle("边框四轨单独配置", ref Cfg.LaneEdgeSeparate);
+                    ColourToggle("轨道边框", ref Cfg.LaneEdgeSeparate);
                     if (Cfg.LaneEdgeSeparate)
                     {
                         for (int i = 0; i < 4; i++)
@@ -218,13 +218,13 @@ namespace LaneReader
                     }
                     else
                     {
-                        ColourRow("轨道边框", ref Cfg.LaneEdgeColour);
+                        ColourRow("轨道边框色", ref Cfg.LaneEdgeColour);
                     }
                 }
 
                 if (Section("音符", ref _showColourNote))
                 {
-                    ColourToggle("四轨单独配置", ref Cfg.NoteSeparate);
+                    ColourToggle("音符", ref Cfg.NoteSeparate);
                     if (Cfg.NoteSeparate)
                     {
                         for (int i = 0; i < 4; i++)
@@ -236,7 +236,7 @@ namespace LaneReader
                         ColourRow("音符", ref Cfg.NoteColour);
                     }
 
-                    ColourToggle("边框四轨单独配置", ref Cfg.NoteEdgeSeparate);
+                    ColourToggle("音符边框", ref Cfg.NoteEdgeSeparate);
                     if (Cfg.NoteEdgeSeparate)
                     {
                         for (int i = 0; i < 4; i++)
@@ -244,11 +244,9 @@ namespace LaneReader
                     }
                     else
                     {
-                        ColourRow("音符边框", ref Cfg.NoteEdgeColour);
+                        ColourRow("音符边框色", ref Cfg.NoteEdgeColour);
                     }
-                    Toggle("显示音符边框", ref Cfg.ShowNoteBorder);
-                    if (Cfg.ShowNoteBorder)
-                        Slider("边框粗细 (px)", ref Cfg.NoteBorderPx, 1f, 8f, "F0");
+                    GUILayout.Label("显示开关和粗细在「显示」区里。");
                 }
 
                 if (Section("判定线 / 判定框", ref _showColourJudge))
@@ -475,7 +473,7 @@ namespace LaneReader
         private static void ColourRow(string label, ref Color c)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(140f));
+            GUILayout.Label(label, GUILayout.Width(126f));
 
             c.r = Channel("R", c.r);
             c.g = Channel("G", c.g);
@@ -509,16 +507,16 @@ namespace LaneReader
 
         private static float Channel(string axis, float v)
         {
-            GUILayout.Label(axis, GUILayout.Width(14f));
-            return GUILayout.HorizontalSlider(v, 0f, 1f, GUILayout.Width(58f));
+            GUILayout.Label(axis, GUILayout.Width(13f));
+            return GUILayout.HorizontalSlider(v, 0f, 1f, GUILayout.Width(54f));
         }
 
         /// <summary>A checkbox with a shorter label column, for the "one per lane" switches.</summary>
         private static void ColourToggle(string label, ref bool value)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(140f));
-            value = GUILayout.Toggle(value, value ? "单独" : "统一", GUILayout.Width(80f));
+            GUILayout.Label(label, GUILayout.Width(126f));
+            value = GUILayout.Toggle(value, value ? "四轨单独" : "四轨统一", GUILayout.Width(90f));
             GUILayout.EndHorizontal();
         }
 
