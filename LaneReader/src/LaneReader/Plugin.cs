@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using HarmonyLib;
 using UnityEngine;
 using UnityModManagerNet;
@@ -53,9 +54,13 @@ namespace LaneReader
         private const float StrikeGrow = 0.10f;
         private const double StrikeShrink2 = 0.82;
 
-        private static bool _showAppearance = true;
+        private static bool _showDisplay = true;
+        private static bool _showLayout = true;
+        private static bool _showAppearance = false;
         private static bool _showFingering = true;
         private static bool _showBeat = true;
+        private static bool _showAlign = false;
+        private static bool _showOther = false;
 
         /// <summary>Left/right hand colours offered in the panel, so no colour picker is needed.</summary>
         internal static readonly Color[] Palette =
@@ -125,103 +130,55 @@ namespace LaneReader
             GUILayout.BeginVertical();
 
             Toggle("显示叠加层", ref Cfg.Enabled);
-            Space();
 
-            Header("显示");
-            Toggle("轨道", ref Cfg.ShowLanes);
-            Toggle("判定线", ref Cfg.ShowJudgeLine);
-            Toggle("音符", ref Cfg.ShowNotes);
-            if (Cfg.ShowNotes)
+            // ---- 显示 ----------------------------------------------------------
+            if (Section("显示", ref _showDisplay))
             {
-                Toggle("用自定义图片", ref Cfg.NoteImageEnabled);
+                Toggle("轨道", ref Cfg.ShowLanes);
+                Toggle("判定线", ref Cfg.ShowJudgeLine);
+                Toggle("音符", ref Cfg.ShowNotes);
+                Toggle("键位标签 D F J K", ref Cfg.ShowKeyLabels);
+                Toggle("判定框", ref Cfg.ShowJudgeBoxes);
+                Toggle("打击弹跳", ref Cfg.ShowHitEffects);
+                Toggle("音符边框", ref Cfg.ShowNoteBorder);
+                if (Cfg.ShowNoteBorder)
+                    Slider("边框粗细 (px)", ref Cfg.NoteBorderPx, 1f, 8f, "F0");
+                Toggle("显示帧数 (判定线下方)", ref Cfg.ShowFps);
+
+                Toggle("用自定义音符图片", ref Cfg.NoteImageEnabled);
                 if (Cfg.NoteImageEnabled)
                 {
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("图片路径", GUILayout.Width(200f));
+                    GUILayout.Label("图片路径", GUILayout.Width(LabelWidth));
                     Cfg.NoteImagePath = GUILayout.TextField(Cfg.NoteImagePath, GUILayout.Width(320f));
                     if (GUILayout.Button("重新加载", GUILayout.Width(90f)))
                         NoteImage.Invalidate();
                     GUILayout.EndHorizontal();
                     GUILayout.Label("相对路径基于 mod 目录，例: note.png = " + ModPath + "\\note.png");
                     Toggle("保持宽高比", ref Cfg.NoteImageKeepAspect);
-                    Toggle("用左右手颜色着色", ref Cfg.NoteImageTint);
+                    Toggle("用轨道的颜色着色", ref Cfg.NoteImageTint);
                     NoteImage.Get(Cfg.NoteImagePath);            // refreshes the status line in place
                     GUILayout.Label("状态: " + NoteImage.Status);
                 }
             }
 
-            Toggle("键位标签 D F J K", ref Cfg.ShowKeyLabels);
-            Toggle("判定框", ref Cfg.ShowJudgeBoxes);
-            Toggle("打击弹跳", ref Cfg.ShowHitEffects);
-            Toggle("音符边框", ref Cfg.ShowNoteBorder);
-            if (Cfg.ShowNoteBorder)
-                Slider("边框粗细 (px)", ref Cfg.NoteBorderPx, 1f, 8f, "F0");
-            Space();
-
-            Header("布局");
-            Slider("下落速度 (px/秒 @1080p)", ref Cfg.NoteSpeedPxPerSec, 50f, 3000f, "F0");
-            Slider("音符高度 (px)", ref Cfg.NoteHeightPx, 4f, 120f, "F0");
-            Slider("轨道宽度 (px)", ref Cfg.LaneWidthPx, 40f, 400f, "F0");
-            Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
-            Slider("判定线高度", ref Cfg.JudgeLineY, 0f, 1f, "F2");
-            Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
-            Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
-            Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 2000f, "F0");
-            Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
-            Space();
-
-            _showBeat = Fold("小节线", _showBeat);
-            if (_showBeat)
+            // ---- 布局 ----------------------------------------------------------
+            if (Section("布局", ref _showLayout))
             {
-                Toggle("显示小节线", ref Cfg.ShowBeatLines);
-                if (Cfg.ShowBeatLines)
-                {
-                    IntSlider("每小节拍数 (3=3/4, 4=4/4)", ref Cfg.BeatsPerBar, 2, 8);
-                    Slider("小节起点偏移 (拍)", ref Cfg.BeatPhaseBeats, -8f, 8f, "F0");
-                    Slider("线透明度", ref Cfg.BeatLineAlpha, 0f, 0.6f, "F3");
-                    Slider("细线粗细 (px)", ref Cfg.BeatLineThicknessPx, 1f, 8f, "F0");
-                    Slider("粗线粗细 (px)", ref Cfg.BarLineThicknessPx, 1f, 12f, "F0");
-                    Toggle("横跨全屏", ref Cfg.BeatLineFullWidth);
-                }
+                Slider("下落速度 (px/秒 @1080p)", ref Cfg.NoteSpeedPxPerSec, 50f, 3000f, "F0");
+                Slider("音符高度 (px)", ref Cfg.NoteHeightPx, 4f, 120f, "F0");
+                Slider("轨道宽度 (px)", ref Cfg.LaneWidthPx, 40f, 400f, "F0");
+                Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
+                Slider("判定线高度 (0~1)", ref Cfg.JudgeLineY, 0f, 1f, "F3");
+                Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
+                Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 2000f, "F0");
+                Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
+                Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
+                GUILayout.Label("轨道长度同时是可见区域的上边界：音符和小节线都从那里开始出现。");
             }
-            Space();
 
-            Header("对齐");
-            Slider("时间偏移 (秒)", ref Cfg.TimeOffsetSeconds, -1f, 1f, "F3");
-            Space();
-
-            _showFingering = Fold("排键", _showFingering);
-            if (_showFingering)
-            {
-                GUILayout.Label("轨道顺序: D  F  J  K");
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("手法", GUILayout.Width(200f));
-                if (GUILayout.Button(Cfg.FingeringMode == 1 ? "拆手序" : "AdoFalling 原版",
-                        GUILayout.Width(160f)))
-                    Cfg.FingeringMode = Cfg.FingeringMode == 1 ? 0 : 1;
-                GUILayout.EndHorizontal();
-
-                if (Cfg.FingeringMode == 1)
-                {
-                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
-                    GUILayout.Label("超过它就减半一次窗口（参考实现原样；越低越偏轮指）");
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("轮指方向", GUILayout.Width(200f));
-                    if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
-                            GUILayout.Width(160f)))
-                        Cfg.OuterRoll = !Cfg.OuterRoll;
-                    GUILayout.EndHorizontal();
-                }
-                else
-                {
-                    Slider("轮指窗口 (毫秒)", ref Cfg.RollWindowMs, 40f, 400f, "F0");
-                    GUILayout.Label("间隔小于窗口 = 轮指；大于 = 食指交替");
-                }
-            }
-            Space();
-
-            _showAppearance = Fold("外观", _showAppearance);
-            if (_showAppearance)
+            // ---- 外观 / 颜色 ---------------------------------------------------
+            if (Section("外观 / 颜色", ref _showAppearance))
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("背景明暗", GUILayout.Width(140f));
@@ -236,28 +193,93 @@ namespace LaneReader
                     Cfg.ColourPreset = (Cfg.ColourPreset + 1) % Palette.Length;
                 GUILayout.EndHorizontal();
             }
-            Space();
 
-            Header("其它");
-            if (GUILayout.Button("切换键: " + Cfg.Key, GUILayout.Width(200f)))
-                Cfg.ToggleKey = NextKey(Cfg.ToggleKey);
-            Toggle("显示帧数 (判定线下方)", ref Cfg.ShowFps);
-            Toggle("输出诊断日志", ref Cfg.DebugLog);
-            Space();
+            // ---- 小节线 --------------------------------------------------------
+            if (Section("小节线", ref _showBeat))
+            {
+                Toggle("显示小节线", ref Cfg.ShowBeatLines);
+                if (Cfg.ShowBeatLines)
+                {
+                    IntSlider("每小节拍数 (3=3/4, 4=4/4)", ref Cfg.BeatsPerBar, 2, 8);
+                    Slider("小节起点偏移 (拍)", ref Cfg.BeatPhaseBeats, -8f, 8f, "F2");
+                    Slider("线透明度", ref Cfg.BeatLineAlpha, 0f, 1f, "F3");
+                    Slider("细线粗细 (px)", ref Cfg.BeatLineThicknessPx, 1f, 8f, "F0");
+                    Slider("粗线粗细 (px)", ref Cfg.BarLineThicknessPx, 1f, 12f, "F0");
+                    Toggle("横跨全屏", ref Cfg.BeatLineFullWidth);
+                }
+            }
 
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("恢复默认", GUILayout.Width(110f)))
-                Cfg = new Settings();
-            if (GUILayout.Button("保存", GUILayout.Width(110f)))
-                Cfg.Save(modEntry);
-            GUILayout.EndHorizontal();
+            // ---- 排键 ----------------------------------------------------------
+            if (Section("排键（手序）", ref _showFingering))
+            {
+                GUILayout.Label("轨道顺序: D  F  J  K");
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("手法", GUILayout.Width(LabelWidth));
+                if (GUILayout.Button(Cfg.FingeringMode == 1 ? "拆手序" : "AdoFalling 原版",
+                        GUILayout.Width(160f)))
+                    Cfg.FingeringMode = Cfg.FingeringMode == 1 ? 0 : 1;
+                GUILayout.EndHorizontal();
+
+                if (Cfg.FingeringMode == 1)
+                {
+                    Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
+                    GUILayout.Label("超过它就减半一次窗口（参考实现原样；越低越偏轮指）。");
+                    GUILayout.Label("读不到谱面 BPM 时基准是 800：设成 850 就不减半（base 800），");
+                    GUILayout.Label("设成 506 会减半（base 400，轮指更多）。");
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("轮指方向", GUILayout.Width(LabelWidth));
+                    if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
+                            GUILayout.Width(160f)))
+                        Cfg.OuterRoll = !Cfg.OuterRoll;
+                    GUILayout.EndHorizontal();
+                }
+                else
+                {
+                    Slider("轮指窗口 (毫秒)", ref Cfg.RollWindowMs, 40f, 400f, "F0");
+                    GUILayout.Label("间隔小于窗口 = 轮指；大于 = 食指交替。");
+                }
+            }
+
+            // ---- 对齐 ----------------------------------------------------------
+            if (Section("对齐", ref _showAlign))
+            {
+                Slider("时间偏移 (秒)", ref Cfg.TimeOffsetSeconds, -1f, 1f, "F4");
+                GUILayout.Label("只影响叠加层显示，不动游戏判定。");
+            }
+
+            // ---- 其它 ----------------------------------------------------------
+            if (Section("其它", ref _showOther))
+            {
+                if (GUILayout.Button("切换键: " + Cfg.Key, GUILayout.Width(200f)))
+                    Cfg.ToggleKey = NextKey(Cfg.ToggleKey);
+                Toggle("输出诊断日志", ref Cfg.DebugLog);
+
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("恢复默认", GUILayout.Width(110f)))
+                    Cfg = new Settings();
+                if (GUILayout.Button("保存", GUILayout.Width(110f)))
+                    Cfg.Save(modEntry);
+                GUILayout.EndHorizontal();
+                GUILayout.Label("改动即时生效；「保存」写进 Settings.json，关面板时 UMM 也会自动保存。");
+            }
 
             GUILayout.EndVertical();
         }
 
-        private static void Header(string text)
+        // ---- panel helpers -------------------------------------------------
+
+        private const float LabelWidth = 210f;
+        private const float SliderWidth = 200f;
+        private const float NumberWidth = 66f;
+
+        /// <summary>A collapsible section header. Returns true while it is open.</summary>
+        private static bool Section(string title, ref bool open)
         {
-            GUILayout.Label("<b>" + text + "</b>");
+            GUILayout.Space(6f);
+            bool next = GUILayout.Toggle(open, (open ? "▼ " : "▶ ") + title);
+            if (next != open)
+                open = next;
+            return open;
         }
 
         private static void Space()
@@ -273,17 +295,50 @@ namespace LaneReader
         private static void Toggle(string label, ref bool value)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(200f));
+            GUILayout.Label(label, GUILayout.Width(LabelWidth));
             value = GUILayout.Toggle(value, value ? "开" : "关", GUILayout.Width(80f));
             GUILayout.EndHorizontal();
         }
 
+        /// <summary>
+        /// A slider that can also be typed into: drag it, or click the box on the right and write
+        /// the number. The typed text is committed on Enter or when the box loses focus, and only
+        /// then is it clamped and parsed - parsing on every keystroke would fight the user over
+        /// values that are not finished yet ("-" or "1." are not numbers, and rewriting the box
+        /// from the value would eat the caret).
+        /// </summary>
         private static void Slider(string label, ref float value, float min, float max, string format)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(200f));
-            value = GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(220f));
-            GUILayout.Label(value.ToString(format), GUILayout.Width(70f));
+            GUILayout.Label(label, GUILayout.Width(LabelWidth));
+
+            float dragged = GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(SliderWidth));
+            if (dragged != value)
+                value = dragged;
+
+            string text;
+            if (!_typed.TryGetValue(label, out text))
+                text = value.ToString(format);
+
+            GUI.SetNextControlName(label);
+            string edited = GUILayout.TextField(text, GUILayout.Width(NumberWidth));
+
+            if (GUI.GetNameOfFocusedControl() == label)
+            {
+                _typed[label] = edited;
+                if (EnterPressed())
+                {
+                    value = Commit(label, edited, value, min, max);
+                    // Keep the caret in the box but show the value that was actually taken, so an
+                    // out-of-range entry does not sit there looking accepted.
+                    _typed[label] = value.ToString(format);
+                }
+            }
+            else if (_typed.ContainsKey(label))
+            {
+                value = Commit(label, text, value, min, max);
+            }
+
             GUILayout.EndHorizontal();
         }
 
@@ -291,10 +346,59 @@ namespace LaneReader
         private static void IntSlider(string label, ref int value, int min, int max)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(200f));
-            value = Mathf.RoundToInt(GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(220f)));
-            GUILayout.Label(value.ToString(), GUILayout.Width(70f));
+            GUILayout.Label(label, GUILayout.Width(LabelWidth));
+
+            int dragged = Mathf.RoundToInt(
+                GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(SliderWidth)));
+            if (dragged != value)
+                value = dragged;
+
+            string text;
+            if (!_typed.TryGetValue(label, out text))
+                text = value.ToString();
+
+            GUI.SetNextControlName(label);
+            string edited = GUILayout.TextField(text, GUILayout.Width(NumberWidth));
+
+            if (GUI.GetNameOfFocusedControl() == label)
+            {
+                _typed[label] = edited;
+                if (EnterPressed())
+                {
+                    value = Mathf.RoundToInt(Commit(label, edited, value, min, max));
+                    _typed[label] = value.ToString();
+                }
+            }
+            else if (_typed.ContainsKey(label))
+            {
+                value = Mathf.RoundToInt(Commit(label, text, value, min, max));
+            }
+
             GUILayout.EndHorizontal();
+        }
+
+        /// <summary>Numbers being typed right now, keyed by the field that owns them.</summary>
+        private static readonly Dictionary<string, string> _typed = new Dictionary<string, string>();
+
+        private static bool EnterPressed()
+        {
+            Event e = Event.current;
+            return e != null && e.type == EventType.KeyDown
+                   && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter
+                       || e.keyCode == KeyCode.Tab);
+        }
+
+        /// <summary>Parses a typed number, clamps it, and stops tracking the field.</summary>
+        private static float Commit(string key, string text, float current, float min, float max)
+        {
+            _typed.Remove(key);
+
+            float parsed;
+            if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed)
+                || float.IsNaN(parsed) || float.IsInfinity(parsed))
+                return current;
+
+            return Mathf.Clamp(parsed, min, max);
         }
 
         /// <summary>Cycles the toggle key through a small, sensible set of choices.</summary>
