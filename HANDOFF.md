@@ -550,6 +550,45 @@ float laneTop = judgeY - laneLen;                                              /
 - 位置：`judgeY + (有键位标签 ? 34 : 6) px`，水平居中，宽度铺满屏幕。
   音符和打击弹跳都在 `boxBottom` 以上，所以文字不会被音符盖住。
 
+### 面板与颜色（2026-10-08 晚）
+
+**面板**：7 个可折叠分区（显示 / 布局 / 外观·颜色 / 小节线 / 排键 / 对齐 / 实验性 / 其它），
+`Plugin.Section(title, ref open)` 就是带 `▼/▶` 的 `GUILayout.Toggle`。
+
+**每个滑块可以直接填数字**（`Plugin.Slider` / `IntSlider` 右边那个小框）：
+
+- 关键点：**只在提交时解析**（回车 / Tab / 失焦），编辑中把文本存在 `_typed[label]` 里。
+  逐键解析会和用户抢输入框 —— 半截的减号、半截的小数点都不是数字，而按当前值回写又会把光标顶回去。
+- 提交后把输入框刷成**真正被采纳的值**，越界输入不会看起来被接受。
+- 键就是 label，所以 **label 必须唯一**（同名滑块会互相抢编辑状态）。
+
+**颜色**（`Settings` 里的一堆 `Color` + `Themes.cs`）：
+
+| 元素 | 字段 | 备注 |
+|---|---|---|
+| 轨道底色 | `LaneColour` / `LaneColours[4]` + `LaneSeparate` | 再乘 `LaneOpacity`（总透明度 0~1） |
+| 轨道边框 | `LaneEdgeColour` / `LaneEdgeColours[4]` + `LaneEdgeSeparate` | 默认 A=0.28 |
+| 音符 | `NoteColour` / `NoteColours[4]` + `NoteSeparate` | 默认 `Separate = true` 且 1/2 轨同色、3/4 轨同色 = 原来的左右手配色 |
+| 音符边框 | `NoteEdgeColour` / `NoteEdgeColours[4]` + `NoteEdgeSeparate` | 跟着音符一起淡出（打击弹跳） |
+| 判定线 / 判定框 / 键位标签 / 帧数 | `JudgeLineColour` / `JudgeBoxColour` / `LabelColour` / `FpsColour` | |
+| 细线（每拍）/ 粗线（每小节） | `BeatLineColour` / `BarLineColour` | 再乘 `BeatLineAlpha`，粗线另外乘 1.8 |
+
+- `Plugin.Ink()` 和 `Plugin.Palette` 都**删掉了**：旧的「背景明暗」就是主题里的一项
+  （`Themes.LightLevel`），旧的左右手配色就是音符的四轨颜色。所有绘制直接读设置里的颜色。
+- 颜色行 `ColourRow` = 4 个 0~1 滑条 + 一个 `RRGGBBAA` 输入框，走同一套「回车/失焦才提交」规则。
+- 主题：`Themes.Names` 六个，`Themes.Apply(cfg, i)` 批量赋值；套完仍可逐项改。
+- **升级旧配置**：老 `Settings.json` 里没有 `"LaneColour"` 键，而 `JsonUtility` 对缺失字段
+  保留类型默认值 —— `Color` 的默认是**全透明黑**，会直接看不见。所以 `Settings.Load` 里检查
+  这个键，缺了就给套上经典主题（只会在升级那一次触发）。
+
+**实验性平滑下落**（`SmoothFalling` / `SmoothGhosts` / `SmoothStrength`，默认关）：
+
+- 音符位置本身是准的，但**每帧才采一次样**：60fps + 1000px/s 一帧约 17px，快速段落看着是一格一格。
+- 拖尾 = 按前几帧的位置再画几层、逐层变淡。
+- 位移量取 **`now - _lastTrailTime`（渲染时钟实际推进） × 速度**，不是 `Time.deltaTime`：
+  所以暂停/结算（时钟冻结）时位移为 0，不会把站着不动的音符拖糊；换关/跳变时位移过大（> 半屏）也跳过。
+- 拖尾只画在 `laneTop` 以下、画在本体之前，不影响命中弹跳。
+
 ### 小节线
 
 **拍网格按 TBPM（真实 BPM）铺，随变速自动变化，且锚在音符上。**
@@ -649,5 +688,12 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 ## 17. 变更记录（本节之后的东西）
 
 - 2026-10-07：加自定义音符图片与整体旋转（§16）；dll 41,984 字节。
-- 2026-10-08：默认值改为 **流速 1000 / 最大硬抗 BPM 850**；**轨道长度独立成设置**（`LaneLengthPx`，默认 900，`0`=旧行为），不再随判定线自动伸缩；**删除「垂直偏移 (px)」**（与判定线高度重复）；**音符与小节线改为从轨道顶端出现**；**新增「显示帧数」**（默认关，判定线下方，日志 `frame:` 行也带）（§15）。
+- 2026-10-08：默认值改为 **流速 1000 / 最大硬抗 BPM 850**；**轨道长度独立成设置**（默认 900，`0`=旧行为）；
+  **删除「垂直偏移 (px)」**（与判定线高度重复）；**音符与小节线改为从轨道顶端出现**；
+  **新增「显示帧数」**（默认关，判定线下方，日志 `frame:` 行也带）。
+- 2026-10-08 晚：**逐项可调的颜色 + 主题预设**（`Themes.cs`，删掉 `LightBackground`/`Palette`/`Ink()`）；
+  面板重排成 7 个可折叠分区、**每个滑块可填数字**、颜色支持 `RRGGBBAA` 输入；
+  **轨道底色总透明度放到 0~100%**；**实验性平滑下落**（重影拖尾，默认关）。
+  部署目录里的 `Settings.json` 已按用户要求**删除回默认**（旧文件备份在 `%TEMP%\LaneReader-settings-<时间戳>\`）；
+  dll 51,712 字节。
 

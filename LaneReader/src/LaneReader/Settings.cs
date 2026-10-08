@@ -242,7 +242,22 @@ namespace LaneReader
                 string path = PathFor(modEntry);
                 if (!File.Exists(path))
                     return new Settings();
-                return JsonUtility.FromJson<Settings>(File.ReadAllText(path));
+
+                string json = File.ReadAllText(path);
+                Settings settings = JsonUtility.FromJson<Settings>(json);
+
+                // A file written before the colours became settable has none of the colour keys, and
+                // JsonUtility leaves absent fields at their type default - which for a Color is
+                // transparent black, i.e. an invisible overlay. Those configs get the classic theme
+                // instead, which is exactly what they were looking at before the upgrade. Any later
+                // save writes the colour keys, so this only ever fires once.
+                if (settings != null && json.IndexOf("\"LaneColour\"", StringComparison.Ordinal) < 0)
+                {
+                    Themes.Apply(settings, 0);
+                    modEntry.Logger.Log("settings: pre-colour config upgraded to the classic theme");
+                }
+
+                return settings ?? new Settings();
             }
             catch (Exception ex)
             {
