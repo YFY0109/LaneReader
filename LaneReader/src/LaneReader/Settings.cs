@@ -172,6 +172,27 @@ namespace LaneReader
         /// <summary>Which theme button was pressed last, for the panel caption only.</summary>
         public int Theme = 0;
 
+        // ------------------------------------------------------------------ experimental
+
+        /// <summary>
+        /// Experimental: draw a motion-blur trail behind every falling note.
+        ///
+        /// The note positions are exact (they come straight from the song clock), but they are only
+        /// *sampled* once per frame, so at 60 fps and 1000 px/s a note jumps about 17 px between
+        /// frames - on a fast chart that reads as stepping rather than as motion. The trail is a few
+        /// extra copies of the note, faded, placed where it was on the previous frames (the distance
+        /// the clock actually advanced since the last frame, so a paused or frozen clock gets no
+        /// trail at all). It cannot add information that was never rendered; what it does is make the
+        /// eye read the jump as movement. Off by default.
+        /// </summary>
+        public bool SmoothFalling = false;
+
+        /// <summary>How many trail copies, 1..10.</summary>
+        public int SmoothGhosts = 4;
+
+        /// <summary>Opacity of the nearest trail copy, as a fraction of the note's own alpha.</summary>
+        public float SmoothStrength = 0.45f;
+
         public float TimeOffsetSeconds = 0f;
 
         /// <summary>

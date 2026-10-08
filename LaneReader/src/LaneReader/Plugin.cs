@@ -45,6 +45,9 @@ namespace LaneReader
         private static float _nextLogAt;
         private static bool _guiLogged;
 
+        /// <summary>Render time of the previous drawn frame, for the experimental trail.</summary>
+        private static double _lastTrailTime = -1.0;
+
         // ---- strike feedback: purely time driven, the game's judgement is not read ----
         private static int _chartKey = -1;
         /// <summary>
@@ -64,6 +67,7 @@ namespace LaneReader
         private static bool _showFingering = true;
         private static bool _showBeat = true;
         private static bool _showAlign = false;
+        private static bool _showExperimental = false;
         private static bool _showOther = false;
 
         // The old five-entry hand palette lived here. Colours are per element now (see Settings and
@@ -315,6 +319,20 @@ namespace LaneReader
             {
                 Slider("时间偏移 (秒)", ref Cfg.TimeOffsetSeconds, -1f, 1f, "F4");
                 GUILayout.Label("只影响叠加层显示，不动游戏判定。");
+            }
+
+            // ---- 实验性 --------------------------------------------------------
+            if (Section("实验性", ref _showExperimental))
+            {
+                Toggle("平滑下落（重影拖尾）", ref Cfg.SmoothFalling);
+                if (Cfg.SmoothFalling)
+                {
+                    IntSlider("拖尾层数", ref Cfg.SmoothGhosts, 1, 10);
+                    Slider("拖尾浓度", ref Cfg.SmoothStrength, 0f, 1f, "F2");
+                    GUILayout.Label("音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），");
+                    GUILayout.Label("拖尾只是把它前几帧的位置淡着补画出来，让眼睛读成运动而不是跳。");
+                    GUILayout.Label("采样冻结时（暂停、结算）不会画拖尾。纯观感，不影响时间轴。");
+                }
             }
 
             // ---- 其它 ----------------------------------------------------------
@@ -1035,7 +1053,48 @@ namespace LaneReader
                 }
 
                 if (Cfg.ShowNotes)
-                    FillNote(new Rect(x + 2f, y, laneW - 4f, noteH), c, edge, refScale);
+                {
+                    Rect body = new Rect(x + 2f, y, laneW - 4f, noteH);
+
+                    // The trail only makes sense while the clock is moving: it is the distance the
+                    // clock advanced since the previous frame, so a frozen clock (pause, death
+                    // screen) produces none rather than a smear of a note that is standing still.
+                    if (Cfg.SmoothFalling && !Chart.ClockFrozen && _lastTrailTime > 0.0)
+                    {
+                        float travel = (float)((now - _lastTrailTime) * speed);
+                        if (travel > 0.05f && travel < h * 0.5f)
+                            DrawTrail(body, c, travel, laneTop);
+                    }
+
+                    FillNote(body, c, edge, refScale);
+                }
+            }
+
+            _lastTrailTime = now;
+        }
+
+        /// <summary>
+        /// The experimental motion-blur trail: the note, drawn again where it was on the previous
+        /// frames, faded. <paramref name="travel"/> is how far it moved since the last frame, so the
+        /// copies land exactly on the previous frames' positions rather than on a guess.
+        /// </summary>
+        private static void DrawTrail(Rect r, Color c, float travel, float laneTop)
+        {
+            int layers = Mathf.Clamp(Cfg.SmoothGhosts, 1, 10);
+            float strength = Mathf.Clamp01(Cfg.SmoothStrength);
+
+            // Far layers first, so the nearest one ends up on top of them and directly under the note.
+            for (int k = layers; k >= 1; k--)
+            {
+                float alpha = strength * (1f - (k - 1f) / layers);
+                if (alpha <= 0.004f)
+                    continue;
+
+                float y = r.y - travel * k;
+                if (y < laneTop)
+                    continue;                       // above the playfield, same gate as the note
+
+                Fill(new Rect(r.x, y, r.width, r.height), Fade(c, alpha));
             }
         }
 
