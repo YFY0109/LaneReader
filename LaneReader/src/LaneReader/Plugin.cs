@@ -57,20 +57,17 @@ namespace LaneReader
         private static bool _showDisplay = true;
         private static bool _showLayout = true;
         private static bool _showAppearance = false;
+        private static bool _showColourLane = true;
+        private static bool _showColourNote = true;
+        private static bool _showColourJudge = false;
+        private static bool _showColourBeat = false;
         private static bool _showFingering = true;
         private static bool _showBeat = true;
         private static bool _showAlign = false;
         private static bool _showOther = false;
 
-        /// <summary>Left/right hand colours offered in the panel, so no colour picker is needed.</summary>
-        internal static readonly Color[] Palette =
-        {
-            new Color(0.40f, 0.70f, 1.00f, 1f),   // blue
-            new Color(1.00f, 0.62f, 0.25f, 1f),   // orange
-            new Color(0.45f, 1.00f, 0.50f, 1f),   // green
-            new Color(1.00f, 0.45f, 0.75f, 1f),   // pink
-            new Color(0.80f, 0.80f, 0.90f, 1f),   // grey
-        };
+        // The old five-entry hand palette lived here. Colours are per element now (see Settings and
+        // Themes), which covers what it did and much more, so it is gone.
 
         public static bool Load(UnityModManager.ModEntry modEntry)
         {
@@ -180,18 +177,91 @@ namespace LaneReader
             // ---- 外观 / 颜色 ---------------------------------------------------
             if (Section("外观 / 颜色", ref _showAppearance))
             {
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("背景明暗", GUILayout.Width(140f));
-                if (GUILayout.Button(Cfg.LightBackground ? "亮背景（黑线）" : "暗背景（白线）",
-                        GUILayout.Width(160f)))
-                    Cfg.LightBackground = !Cfg.LightBackground;
-                GUILayout.EndHorizontal();
+                GUILayout.Label("主题（一键套用，之后仍可逐项改）:");
+                for (int t = 0; t < Themes.Names.Length; t += 2)
+                {
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button(Themes.Names[t], GUILayout.Width(240f)))
+                        Themes.Apply(Cfg, t);
+                    if (t + 1 < Themes.Names.Length
+                        && GUILayout.Button(Themes.Names[t + 1], GUILayout.Width(240f)))
+                        Themes.Apply(Cfg, t + 1);
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.Label("当前主题: " + Themes.Names[Mathf.Clamp(Cfg.Theme, 0, Themes.Names.Length - 1)]
+                                + "（手动改过颜色后这里不会跟着变）");
 
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("配色 " + (Cfg.ColourPreset + 1) + "/" + Palette.Length, GUILayout.Width(140f));
-                if (GUILayout.Button("下一个", GUILayout.Width(80f)))
-                    Cfg.ColourPreset = (Cfg.ColourPreset + 1) % Palette.Length;
-                GUILayout.EndHorizontal();
+                if (Section("轨道", ref _showColourLane))
+                {
+                    ColourToggle("四轨单独配置", ref Cfg.LaneSeparate);
+                    if (Cfg.LaneSeparate)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            ColourRow("轨道 " + (i + 1) + " 底色", ref Cfg.LaneColours[i]);
+                    }
+                    else
+                    {
+                        ColourRow("轨道底色", ref Cfg.LaneColour);
+                    }
+                    Slider("轨道底色总透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
+                    GUILayout.Label("总透明度会乘在颜色的 alpha 上（默认 0.06，所以颜色 A 拉满也很淡）。");
+
+                    ColourToggle("边框四轨单独配置", ref Cfg.LaneEdgeSeparate);
+                    if (Cfg.LaneEdgeSeparate)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            ColourRow("轨道 " + (i + 1) + " 边框", ref Cfg.LaneEdgeColours[i]);
+                    }
+                    else
+                    {
+                        ColourRow("轨道边框", ref Cfg.LaneEdgeColour);
+                    }
+                }
+
+                if (Section("音符", ref _showColourNote))
+                {
+                    ColourToggle("四轨单独配置", ref Cfg.NoteSeparate);
+                    if (Cfg.NoteSeparate)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            ColourRow("轨道 " + (i + 1) + " 音符", ref Cfg.NoteColours[i]);
+                        GUILayout.Label("默认 1/2 轨同色、3/4 轨同色 = 原来的左右手配色。");
+                    }
+                    else
+                    {
+                        ColourRow("音符", ref Cfg.NoteColour);
+                    }
+
+                    ColourToggle("边框四轨单独配置", ref Cfg.NoteEdgeSeparate);
+                    if (Cfg.NoteEdgeSeparate)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            ColourRow("轨道 " + (i + 1) + " 音符边框", ref Cfg.NoteEdgeColours[i]);
+                    }
+                    else
+                    {
+                        ColourRow("音符边框", ref Cfg.NoteEdgeColour);
+                    }
+                    Toggle("显示音符边框", ref Cfg.ShowNoteBorder);
+                    if (Cfg.ShowNoteBorder)
+                        Slider("边框粗细 (px)", ref Cfg.NoteBorderPx, 1f, 8f, "F0");
+                }
+
+                if (Section("判定线 / 判定框", ref _showColourJudge))
+                {
+                    ColourRow("判定线", ref Cfg.JudgeLineColour);
+                    ColourRow("判定框", ref Cfg.JudgeBoxColour);
+                    ColourRow("键位标签", ref Cfg.LabelColour);
+                    ColourRow("帧数文字", ref Cfg.FpsColour);
+                }
+
+                if (Section("小节线", ref _showColourBeat))
+                {
+                    ColourRow("细线（每拍）", ref Cfg.BeatLineColour);
+                    ColourRow("粗线（每小节）", ref Cfg.BarLineColour);
+                    Slider("线总透明度", ref Cfg.BeatLineAlpha, 0f, 1f, "F3");
+                    GUILayout.Label("粗线另外再乘 1.8，所以它比细线显眼；把粗线颜色 A 调低就能拉平。");
+                }
             }
 
             // ---- 小节线 --------------------------------------------------------
@@ -379,6 +449,91 @@ namespace LaneReader
 
         /// <summary>Numbers being typed right now, keyed by the field that owns them.</summary>
         private static readonly Dictionary<string, string> _typed = new Dictionary<string, string>();
+
+        /// <summary>
+        /// An RGBA colour: four 0..1 channel sliders and a hex box (RRGGBBAA, '#' optional), using
+        /// the same commit-on-Enter rule as the number fields.
+        /// </summary>
+        private static void ColourRow(string label, ref Color c)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(140f));
+
+            c.r = Channel("R", c.r);
+            c.g = Channel("G", c.g);
+            c.b = Channel("B", c.b);
+            c.a = Channel("A", c.a);
+
+            string key = "hex:" + label;
+            string text;
+            if (!_typed.TryGetValue(key, out text))
+                text = Hex(c);
+
+            GUI.SetNextControlName(key);
+            string edited = GUILayout.TextField(text, GUILayout.Width(74f));
+
+            if (GUI.GetNameOfFocusedControl() == key)
+            {
+                _typed[key] = edited;
+                if (EnterPressed())
+                {
+                    c = ParseHex(edited, c);
+                    _typed[key] = Hex(c);
+                }
+            }
+            else if (_typed.ContainsKey(key))
+            {
+                c = ParseHex(text, c);
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        private static float Channel(string axis, float v)
+        {
+            GUILayout.Label(axis, GUILayout.Width(14f));
+            return GUILayout.HorizontalSlider(v, 0f, 1f, GUILayout.Width(58f));
+        }
+
+        /// <summary>A checkbox with a shorter label column, for the "one per lane" switches.</summary>
+        private static void ColourToggle(string label, ref bool value)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(140f));
+            value = GUILayout.Toggle(value, value ? "单独" : "统一", GUILayout.Width(80f));
+            GUILayout.EndHorizontal();
+        }
+
+        private static string Hex(Color c)
+        {
+            return ((int)(Mathf.Clamp01(c.r) * 255f + 0.5f)).ToString("X2")
+                   + ((int)(Mathf.Clamp01(c.g) * 255f + 0.5f)).ToString("X2")
+                   + ((int)(Mathf.Clamp01(c.b) * 255f + 0.5f)).ToString("X2")
+                   + ((int)(Mathf.Clamp01(c.a) * 255f + 0.5f)).ToString("X2");
+        }
+
+        /// <summary>RRGGBB or RRGGBBAA; anything unparsable leaves the colour alone.</summary>
+        private static Color ParseHex(string text, Color current)
+        {
+            if (text == null)
+                return current;
+
+            text = text.Trim().TrimStart('#');
+            if (text.Length != 6 && text.Length != 8)
+                return current;
+
+            int r, g, b, a = 255;
+            if (!int.TryParse(text.Substring(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out r)
+                || !int.TryParse(text.Substring(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out g)
+                || !int.TryParse(text.Substring(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out b))
+                return current;
+
+            if (text.Length == 8
+                && !int.TryParse(text.Substring(6, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out a))
+                return current;
+
+            return new Color(r / 255f, g / 255f, b / 255f, a / 255f);
+        }
 
         private static bool EnterPressed()
         {
@@ -731,18 +886,14 @@ namespace LaneReader
             float laneLen = Cfg.LaneLengthPx > 0f ? Cfg.LaneLengthPx * refScale : judgeY;
             float laneTop = judgeY - laneLen;
 
-            Color left = Palette[Cfg.ColourPreset % Palette.Length];
-            Color right = Palette[(Cfg.ColourPreset + 1) % Palette.Length];
-
             // ---- lanes ----------------------------------------------------------
             if (Cfg.ShowLanes)
             {
-                Color body = Ink(Cfg.LaneOpacity);
-                Color edge = Ink(0.28f);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
                     float x = x0 + i * (laneW + laneGap);
-                    Fill(new Rect(x, laneTop, laneW, laneLen), body);
+                    Fill(new Rect(x, laneTop, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
+                    Color edge = LaneEdgeColour(i);
                     Fill(new Rect(x, laneTop, 2f, laneLen), edge);
                     Fill(new Rect(x + laneW - 2f, laneTop, 2f, laneLen), edge);
                 }
@@ -759,7 +910,7 @@ namespace LaneReader
 
             // ---- judgement line -------------------------------------------------
             if (Cfg.ShowJudgeLine)
-                Fill(new Rect(0f, judgeY, w, Mathf.Max(2f, 3f * refScale)), Ink(0.85f));
+                Fill(new Rect(0f, judgeY, w, Mathf.Max(2f, 3f * refScale)), Cfg.JudgeLineColour);
 
             // ---- key labels -----------------------------------------------------
             // Never change GUI.skin.font here: the panel text has to stay on the game's own font.
@@ -768,7 +919,7 @@ namespace LaneReader
                 var label = new GUIStyle(GUI.skin.label);
                 label.fontSize = Mathf.RoundToInt(18f * refScale);
                 label.alignment = TextAnchor.LowerCenter;
-                label.normal.textColor = Ink(0.75f);
+                label.normal.textColor = Cfg.LabelColour;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
                     float x = x0 + i * (laneW + laneGap);
@@ -784,7 +935,7 @@ namespace LaneReader
             if (Cfg.ShowJudgeBoxes)
             {
                 float t = Mathf.Max(2f, 2f * refScale);
-                Color box = Ink(0.22f);
+                Color box = Cfg.JudgeBoxColour;
                 float top = judgeY - noteH * 0.5f;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
@@ -806,7 +957,7 @@ namespace LaneReader
                 var fpsStyle = new GUIStyle(GUI.skin.label);
                 fpsStyle.fontSize = Mathf.RoundToInt(16f * refScale);
                 fpsStyle.alignment = TextAnchor.UpperCenter;
-                fpsStyle.normal.textColor = Ink(0.7f);
+                fpsStyle.normal.textColor = Cfg.FpsColour;
 
                 float fpsTop = judgeY + (Cfg.ShowKeyLabels ? 34f : 6f) * refScale;
                 GUI.Label(new Rect(0f, fpsTop, w, 22f * refScale), FrameRateText(), fpsStyle);
@@ -844,7 +995,8 @@ namespace LaneReader
                     continue;
 
                 float x = x0 + note.Lane * (laneW + laneGap);
-                Color c = FingeringPlanner.HandOf(note.Lane) == Hand.Left ? left : right;
+                Color c = NoteBodyColour(note.Lane);
+                Color edge = NoteEdgeColour(note.Lane);
 
                 // ---- strike pop ----------------------------------------------------
                 // Reaching the line pins the note there. It then swells and shrinks, but its
@@ -871,30 +1023,34 @@ namespace LaneReader
                     }
                     float w2 = laneW * scale;
                     float h2 = noteH * scale;
-                    float alpha = 1f - t * t;                                // fade out
+                    float fade = 1f - t * t;                                 // fade out
+                    Color pop = Fade(c, fade);
+                    Color popEdge = Fade(edge, fade);
 
                     // Bottom edge welded to the bottom of the judgement box, so the note grows
                     // upward and never drifts off the line as its size changes.
                     FillNote(new Rect(x + (laneW - w2) * 0.5f, boxBottom - h2, w2, h2),
-                        new Color(c.r, c.g, c.b, alpha), refScale);
+                        pop, popEdge, refScale);
                     continue;
                 }
 
                 if (Cfg.ShowNotes)
-                    FillNote(new Rect(x + 2f, y, laneW - 4f, noteH), c, refScale);
+                    FillNote(new Rect(x + 2f, y, laneW - 4f, noteH), c, edge, refScale);
             }
         }
 
         /// <summary>
-        /// Fills a note, with a darker outline when the outline is enabled. The block is drawn in
-        /// the darkened colour and the note's own colour is inset on top of it, so a note keeps
-        /// exactly the footprint it has without an outline.
+        /// Fills a note, with its outline when the outline is enabled. The block is drawn in the
+        /// outline colour and the note's own colour is inset on top of it, so a note keeps exactly
+        /// the footprint it has without an outline. The outline is the note's own border colour
+        /// (per lane, when the lane colours are separate) and it fades with the note, so a strike
+        /// pop does not leave a hard-edged rectangle behind.
         ///
         /// With a custom image the outline is drawn the same way and the sprite replaces the inner
         /// block, contained in it. The image carries its own alpha; the note's alpha (which is what
         /// makes a struck note fade out) is multiplied on top of it through GUI.color.
         /// </summary>
-        private static void FillNote(Rect r, Color c, float refScale)
+        private static void FillNote(Rect r, Color c, Color edge, float refScale)
         {
             Texture2D image = Cfg.NoteImageEnabled ? NoteImage.Get(Cfg.NoteImagePath) : null;
 
@@ -909,17 +1065,14 @@ namespace LaneReader
                     return;
                 }
 
-                // The opposite of the background rather than a darker shade of the note: on a dark
-                // level the outline is white, on a light one black, so a note always separates from
-                // whatever is behind it and from its neighbours.
-                Fill(r, Ink(c.a));
+                Fill(r, edge);
                 Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
                 return;
             }
 
             if (border)
             {
-                Fill(r, Ink(c.a));
+                Fill(r, edge);
                 r = new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b);
             }
 
@@ -942,16 +1095,40 @@ namespace LaneReader
             GUI.color = prev;
         }
 
-        /// <summary>
-        /// The overlay's neutral colour: white ink on a dark level, black ink on a light one. Every
-        /// part that is not a note colour goes through here, which is what makes the light/dark
-        /// switch a single setting.
-        /// </summary>
-        private static Color Ink(float alpha)
+        // ---- colours --------------------------------------------------------
+
+        /// <summary>Lane body colour: the single one, or the lane's own when they are separate.</summary>
+        private static Color LaneBodyColour(int lane)
         {
-            return Cfg.LightBackground
-                ? new Color(0f, 0f, 0f, alpha)
-                : new Color(1f, 1f, 1f, alpha);
+            return Cfg.LaneSeparate ? At(Cfg.LaneColours, lane) : Cfg.LaneColour;
+        }
+
+        private static Color LaneEdgeColour(int lane)
+        {
+            return Cfg.LaneEdgeSeparate ? At(Cfg.LaneEdgeColours, lane) : Cfg.LaneEdgeColour;
+        }
+
+        private static Color NoteBodyColour(int lane)
+        {
+            return Cfg.NoteSeparate ? At(Cfg.NoteColours, lane) : Cfg.NoteColour;
+        }
+
+        private static Color NoteEdgeColour(int lane)
+        {
+            return Cfg.NoteEdgeSeparate ? At(Cfg.NoteEdgeColours, lane) : Cfg.NoteEdgeColour;
+        }
+
+        private static Color At(Color[] colours, int lane)
+        {
+            if (colours == null || colours.Length == 0)
+                return Color.white;
+            return colours[((lane % colours.Length) + colours.Length) % colours.Length];
+        }
+
+        /// <summary>The colour with its alpha scaled, keeping its RGB.</summary>
+        private static Color Fade(Color c, float factor)
+        {
+            return new Color(c.r, c.g, c.b, c.a * factor);
         }
 
         /// <summary>
@@ -989,7 +1166,11 @@ namespace LaneReader
                 bool bar = ((beat % perBar) + perBar) % perBar == 0;
                 float thick = Mathf.Max(1f,
                     (bar ? Cfg.BarLineThicknessPx : Cfg.BeatLineThicknessPx) * refScale);
-                float alpha = bar ? Mathf.Min(1f, Cfg.BeatLineAlpha * 1.8f) : Cfg.BeatLineAlpha;
+
+                // The master opacity trims the colour's own alpha; bars are still drawn a bit
+                // stronger than beats, as they were before the colours were settable.
+                Color ink = bar ? Cfg.BarLineColour : Cfg.BeatLineColour;
+                float alpha = Mathf.Clamp01(ink.a * Cfg.BeatLineAlpha * (bar ? 1.8f : 1f));
 
                 float y = boxBottom - (float)((line.Time - now) * speed);
 
@@ -998,7 +1179,7 @@ namespace LaneReader
                 if (y < laneTop)
                     break;
 
-                Fill(new Rect(left, y, width, thick), Ink(alpha));
+                Fill(new Rect(left, y, width, thick), new Color(ink.r, ink.g, ink.b, alpha));
             }
         }
 

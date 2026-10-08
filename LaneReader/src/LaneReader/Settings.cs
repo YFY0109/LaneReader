@@ -117,13 +117,60 @@ namespace LaneReader
         /// <summary>Draw the beat lines across the whole screen instead of only across the lanes.</summary>
         public bool BeatLineFullWidth = true;
 
-        /// <summary>
-        /// True when the level's background is light: the overlay's neutral parts (lanes, judgement
-        /// line, boxes, labels, beat lines) are then drawn in black instead of white, and note
-        /// outlines take the opposite end of that scale so they still separate a note from what is
-        /// behind it.
-        /// </summary>
-        public bool LightBackground = false;
+        // ------------------------------------------------------------------ colours
+        //
+        // Every element carries its own RGBA colour, so the light/dark switch and the old
+        // five-entry palette are both gone: "black lines on a light level" is now just a theme
+        // (Themes.cs), and the left/right hand colours are the note colours of lanes 1/2 and 3/4.
+        //
+        // Alpha: the four "track" elements below are multiplied by their own opacity slider
+        // (LaneOpacity for the lane body, BeatLineAlpha for the lines), the rest use the colour's
+        // own alpha directly. Where a "Separate" flag is off, the single colour is used for all
+        // four lanes; where it is on, the array is used, one entry per lane (D F J K).
+
+        public Color LaneColour = new Color(1f, 1f, 1f, 1f);
+        public bool LaneSeparate = false;
+        public Color[] LaneColours = new Color[]
+        {
+            new Color(1f, 1f, 1f, 1f), new Color(1f, 1f, 1f, 1f),
+            new Color(1f, 1f, 1f, 1f), new Color(1f, 1f, 1f, 1f),
+        };
+
+        public Color LaneEdgeColour = new Color(1f, 1f, 1f, 0.28f);
+        public bool LaneEdgeSeparate = false;
+        public Color[] LaneEdgeColours = new Color[]
+        {
+            new Color(1f, 1f, 1f, 0.28f), new Color(1f, 1f, 1f, 0.28f),
+            new Color(1f, 1f, 1f, 0.28f), new Color(1f, 1f, 1f, 0.28f),
+        };
+
+        /// <summary>Note colours. Separate is on by default so the left/right hand split survives:
+        /// lanes 1/2 take one colour and lanes 3/4 the other.</summary>
+        public Color NoteColour = new Color(0.40f, 0.70f, 1.00f, 1f);
+        public bool NoteSeparate = true;
+        public Color[] NoteColours = new Color[]
+        {
+            new Color(0.40f, 0.70f, 1.00f, 1f), new Color(0.40f, 0.70f, 1.00f, 1f),
+            new Color(1.00f, 0.62f, 0.25f, 1f), new Color(1.00f, 0.62f, 0.25f, 1f),
+        };
+
+        public Color NoteEdgeColour = new Color(1f, 1f, 1f, 1f);
+        public bool NoteEdgeSeparate = false;
+        public Color[] NoteEdgeColours = new Color[]
+        {
+            new Color(1f, 1f, 1f, 1f), new Color(1f, 1f, 1f, 1f),
+            new Color(1f, 1f, 1f, 1f), new Color(1f, 1f, 1f, 1f),
+        };
+
+        public Color JudgeLineColour = new Color(1f, 1f, 1f, 0.85f);
+        public Color JudgeBoxColour = new Color(1f, 1f, 1f, 0.22f);
+        public Color BeatLineColour = new Color(1f, 1f, 1f, 1f);
+        public Color BarLineColour = new Color(1f, 1f, 1f, 1f);
+        public Color LabelColour = new Color(1f, 1f, 1f, 0.75f);
+        public Color FpsColour = new Color(1f, 1f, 1f, 0.7f);
+
+        /// <summary>Which theme button was pressed last, for the panel caption only.</summary>
+        public int Theme = 0;
 
         public float TimeOffsetSeconds = 0f;
 
@@ -159,9 +206,6 @@ namespace LaneReader
         /// roll), false on its index finger (J K F D, the "inner" roll).
         /// </summary>
         public bool OuterRoll = true;
-
-        /// <summary>Palette index shared by both hands; see <see cref="Plugin.Palette"/>.</summary>
-        public int ColourPreset = 0;
 
         public bool DebugLog = true;
 
