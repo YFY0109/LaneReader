@@ -69,6 +69,7 @@ namespace LaneReader
         private static bool _showBeat = true;
         private static bool _showAlign = false;
         private static bool _showExperimental = false;
+        private static bool _showFun = false;
         private static bool _showOther = false;
 
         // The old five-entry hand palette lived here. Colours are per element now (see Settings and
@@ -362,6 +363,20 @@ namespace LaneReader
                     GUILayout.Label("音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），");
                     GUILayout.Label("拖尾只是把它前几帧的位置淡着补画出来，让眼睛读成运动而不是跳。");
                     GUILayout.Label("采样冻结时（暂停、结算）不会画拖尾。纯观感，不影响时间轴。");
+                }
+
+                // ---- 娱乐（纯好玩，不影响读谱）----
+                if (Section("娱乐", ref _showFun))
+                {
+                    Toggle("轨道乱飞", ref Cfg.FunFly);
+                    if (Cfg.FunFly)
+                    {
+                        Slider("乱飞幅度 (px)", ref Cfg.FunFlyAmplitudePx, 0f, 900f, "F0");
+                        Slider("乱飞速度", ref Cfg.FunFlySpeed, 0.02f, 3f, "F2");
+                        GUILayout.Label("每条轨道走自己的 Perlin 噪声路径（平滑漂移，不是抖），轨道和它的音符一起走。");
+                    }
+
+                    GUILayout.Label("（这里先只放了乱飞；下面两个接着加。）");
                 }
             }
 
@@ -977,11 +992,12 @@ namespace LaneReader
                 {
                     for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                     {
-                        float x = x0 + i * (laneW + laneGap);
-                        Fill(new Rect(x, laneTop, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
+                        float x = x0 + i * (laneW + laneGap) + LaneWanderX(i);
+                        float y = laneTop + LaneWanderY(i);
+                        Fill(new Rect(x, y, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
                         Color edge = LaneEdgeColour(i);
-                        Fill(new Rect(x, laneTop, 2f, laneLen), edge);
-                        Fill(new Rect(x + laneW - 2f, laneTop, 2f, laneLen), edge);
+                        Fill(new Rect(x, y, 2f, laneLen), edge);
+                        Fill(new Rect(x + laneW - 2f, y, 2f, laneLen), edge);
                     }
                 }
             }
@@ -1009,8 +1025,9 @@ namespace LaneReader
                 label.normal.textColor = Cfg.LabelColour;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
-                    float x = x0 + i * (laneW + laneGap);
-                    GUI.Label(new Rect(x, judgeY + 6f * refScale, laneW, 26f * refScale),
+                    float x = x0 + i * (laneW + laneGap) + LaneWanderX(i);
+                    float y = judgeY + 6f * refScale + LaneWanderY(i);
+                    GUI.Label(new Rect(x, y, laneW, 26f * refScale),
                         FingeringPlanner.KeyName(i), label);
                 }
             }
@@ -1023,10 +1040,10 @@ namespace LaneReader
             {
                 float t = Mathf.Max(2f, 2f * refScale);
                 Color box = Cfg.JudgeBoxColour;
-                float top = judgeY - noteH * 0.5f;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
-                    float x = x0 + i * (laneW + laneGap);
+                    float x = x0 + i * (laneW + laneGap) + LaneWanderX(i);
+                    float top = judgeY - noteH * 0.5f + LaneWanderY(i);
                     Fill(new Rect(x, top, laneW, t), box);                       // top edge
                     Fill(new Rect(x, top + noteH - t, laneW, t), box);           // bottom edge
                     Fill(new Rect(x, top, t, noteH), box);                       // left edge
@@ -1129,8 +1146,10 @@ namespace LaneReader
                     float depth = Depth(y + noteH * 0.5f, judgeY, laneTop);
                     float bodyW = Mathf.Max(1f, (laneW - 4f) * depth);
                     float bodyH = Mathf.Max(1f, noteH * (0.35f + 0.65f * depth));
-                    float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, depth);
-                    Rect body = new Rect(bodyCentre - bodyW * 0.5f, y + noteH - bodyH, bodyW, bodyH);
+                    float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, depth)
+                                       + LaneWanderX(note.Lane);
+                    float bodyY = y + noteH - bodyH + LaneWanderY(note.Lane);
+                    Rect body = new Rect(bodyCentre - bodyW * 0.5f, bodyY, bodyW, bodyH);
 
                     // The trail only makes sense while the clock is moving: it is the distance the
                     // clock advanced since the previous frame, so a frozen clock (pause, death
@@ -1236,6 +1255,32 @@ namespace LaneReader
             GUI.color = prev;
         }
 
+        // ---- experimental fun ------------------------------------------------
+
+        /// <summary>
+        /// Where lane <paramref name="lane"/> has wandered off to, in reference pixels. Perlin noise
+        /// per lane (and per axis) so each lane drifts smoothly and independently instead of
+        /// jittering, and unscaledTime so it keeps moving while the game is paused - it is a toy, and
+        /// freezing it on pause would look like a bug.
+        /// </summary>
+        private static float LaneWanderX(int lane)
+        {
+            if (!Cfg.FunFly)
+                return 0f;
+            float t = Time.unscaledTime * Mathf.Max(0.01f, Cfg.FunFlySpeed);
+            float seed = lane * 13.37f + 5.1f;
+            return (Mathf.PerlinNoise(seed, t) * 2f - 1f) * Cfg.FunFlyAmplitudePx * RefScale();
+        }
+
+        private static float LaneWanderY(int lane)
+        {
+            if (!Cfg.FunFly)
+                return 0f;
+            float t = Time.unscaledTime * Mathf.Max(0.01f, Cfg.FunFlySpeed);
+            float seed = lane * 27.11f + 91.7f;
+            return (Mathf.PerlinNoise(seed, t) * 2f - 1f) * Cfg.FunFlyAmplitudePx * 0.6f * RefScale();
+        }
+
         // ---- experimental 3D -------------------------------------------------
 
         /// <summary>
@@ -1288,12 +1333,13 @@ namespace LaneReader
                 float edge = Mathf.Max(1f, 2f * p);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
-                    float centre = LaneCentre(i, x0, laneW, laneGap, cx, p);
+                    float centre = LaneCentre(i, x0, laneW, laneGap, cx, p) + LaneWanderX(i);
+                    float top = y + LaneWanderY(i);
                     float left = centre - width * 0.5f;
-                    Fill(new Rect(left, y, width, step + 0.5f), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
+                    Fill(new Rect(left, top, width, step + 0.5f), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
                     Color line = LaneEdgeColour(i);
-                    Fill(new Rect(left, y, edge, step + 0.5f), line);
-                    Fill(new Rect(left + width - edge, y, edge, step + 0.5f), line);
+                    Fill(new Rect(left, top, edge, step + 0.5f), line);
+                    Fill(new Rect(left + width - edge, top, edge, step + 0.5f), line);
                 }
             }
         }

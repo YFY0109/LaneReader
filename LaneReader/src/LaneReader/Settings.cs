@@ -206,6 +206,17 @@ namespace LaneReader
         /// <summary>How early the 3D taper starts: 0 is a straight cone, higher hugs the line longer.</summary>
         public float ThreeDStrength = 1.2f;
 
+        // ---- 娱乐（实验性分类里的小分类）----
+
+        /// <summary>Fun: the four lanes wander around on their own, each on its own noise path.</summary>
+        public bool FunFly = false;
+
+        /// <summary>How far a lane may wander from where it belongs, in reference pixels.</summary>
+        public float FunFlyAmplitudePx = 260f;
+
+        /// <summary>How fast the wander moves.</summary>
+        public float FunFlySpeed = 0.35f;
+
         /// <summary>
         /// Experimental: draw a motion-blur trail behind every falling note.
         ///
