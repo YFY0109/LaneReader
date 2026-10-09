@@ -140,6 +140,8 @@ namespace LaneReader
             // ---- 显示 ----------------------------------------------------------
             if (Section("显示", ref _showDisplay))
             {
+              using (Indent())
+              {
                 Toggle("轨道", ref Cfg.ShowLanes);
                 Toggle("判定线", ref Cfg.ShowJudgeLine);
                 Toggle("音符", ref Cfg.ShowNotes);
@@ -167,11 +169,14 @@ namespace LaneReader
                     GUILayout.Label("图片按原样画（不再着色）：没画到的地方就是透明的。");
                     GUILayout.Label("打开「音符边框」时，边框只画在图片外面的一圈，不会垫在图片底下。");
                 }
+              }
             }
 
             // ---- 布局 ----------------------------------------------------------
             if (Section("布局", ref _showLayout))
             {
+              using (Indent())
+              {
                 Slider("下落速度 (px/秒 @1080p)", ref Cfg.NoteSpeedPxPerSec, 50f, 3000f, "F0");
                 Slider("音符高度 (px)", ref Cfg.NoteHeightPx, 4f, 120f, "F0");
                 Slider("轨道宽度 (px)", ref Cfg.LaneWidthPx, 40f, 400f, "F0");
@@ -182,11 +187,14 @@ namespace LaneReader
                 Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
                 Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
                 GUILayout.Label("轨道长度同时是可见区域的上边界：音符和小节线都从那里开始出现。");
+              }
             }
 
             // ---- 外观 / 颜色 ---------------------------------------------------
             if (Section("外观 / 颜色", ref _showAppearance))
             {
+              using (Indent())
+              {
                 GUILayout.Label("主题（一键套用，之后仍可逐项改）:");
                 for (int t = 0; t < Themes.Names.Length; t += 2)
                 {
@@ -203,6 +211,8 @@ namespace LaneReader
 
                 if (Section("轨道", ref _showColourLane))
                 {
+                  using (Indent())
+                  {
                     ColourToggle("轨道底色", ref Cfg.LaneSeparate);
                     if (Cfg.LaneSeparate)
                     {
@@ -226,10 +236,13 @@ namespace LaneReader
                     {
                         ColourRow("轨道边框色", ref Cfg.LaneEdgeColour);
                     }
+                  }
                 }
 
                 if (Section("音符", ref _showColourNote))
                 {
+                  using (Indent())
+                  {
                     ColourToggle("音符", ref Cfg.NoteSeparate);
                     if (Cfg.NoteSeparate)
                     {
@@ -253,26 +266,35 @@ namespace LaneReader
                         ColourRow("音符边框色", ref Cfg.NoteEdgeColour);
                     }
                     GUILayout.Label("显示开关和粗细在「显示」区里。");
+                  }
                 }
 
                 if (Section("判定线 / 判定框", ref _showColourJudge))
                 {
+                  using (Indent())
+                  {
                     ColourRow("判定线", ref Cfg.JudgeLineColour);
                     ColourRow("判定框", ref Cfg.JudgeBoxColour);
                     ColourRow("键位标签", ref Cfg.LabelColour);
                     ColourRow("帧数文字", ref Cfg.FpsColour);
+                  }
                 }
 
                 if (Section("小节线", ref _showColourBeat))
                 {
+                  using (Indent())
+                  {
                     ColourRow("细线（每拍）", ref Cfg.BeatLineColour);
                     ColourRow("粗线（每小节）", ref Cfg.BarLineColour);
                     Slider("线总透明度", ref Cfg.BeatLineAlpha, 0f, 1f, "F3");
                     GUILayout.Label("粗线另外再乘 1.8，所以它比细线显眼；把粗线颜色 A 调低就能拉平。");
+                  }
                 }
 
                 if (Section("长按（hold）", ref _showColourHold))
                 {
+                  using (Indent())
+                  {
                     GUILayout.Label("长按的中间那段线条。要和普通音符一样单独配色就打开下面的开关。");
                     ColourToggle("长按线条", ref Cfg.HoldSeparate);
                     if (Cfg.HoldSeparate)
@@ -285,12 +307,16 @@ namespace LaneReader
                         ColourRow("长按线条色", ref Cfg.HoldColour);
                     }
                     Slider("线条粗细（轨道宽的比例）", ref Cfg.HoldWidthFraction, 0.05f, 1f, "F2");
+                  }
                 }
+              }
             }
 
             // ---- 小节线 --------------------------------------------------------
             if (Section("小节线", ref _showBeat))
             {
+              using (Indent())
+              {
                 Toggle("显示小节线", ref Cfg.ShowBeatLines);
                 if (Cfg.ShowBeatLines)
                 {
@@ -301,11 +327,14 @@ namespace LaneReader
                     Slider("粗线粗细 (px)", ref Cfg.BarLineThicknessPx, 1f, 12f, "F0");
                     Toggle("横跨全屏", ref Cfg.BeatLineFullWidth);
                 }
+              }
             }
 
             // ---- 排键 ----------------------------------------------------------
             if (Section("排键（手序）", ref _showFingering))
             {
+              using (Indent())
+              {
                 GUILayout.Label("轨道顺序: D  F  J  K");
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("手法", GUILayout.Width(LabelWidth));
@@ -332,30 +361,39 @@ namespace LaneReader
                     Slider("轮指窗口 (毫秒)", ref Cfg.RollWindowMs, 40f, 400f, "F0");
                     GUILayout.Label("间隔小于窗口 = 轮指；大于 = 食指交替。");
                 }
+              }
             }
 
             // ---- 对齐 ----------------------------------------------------------
             if (Section("对齐", ref _showAlign))
             {
+              using (Indent())
+              {
                 Slider("时间偏移 (秒)", ref Cfg.TimeOffsetSeconds, -1f, 1f, "F4");
                 GUILayout.Label("只影响叠加层显示，不动游戏判定。");
+              }
             }
 
             // ---- 实验性 --------------------------------------------------------
             if (Section("实验性", ref _showExperimental))
             {
+              using (Indent())
+              {
                 Toggle("3D 轨道（灭点在轨道顶端）", ref Cfg.ThreeDLanes);
                 if (Cfg.ThreeDLanes)
                 {
-                    Slider("透视强度", ref Cfg.ThreeDStrength, 0f, 3f, "F2");
+                    Slider("透视强度", ref Cfg.ThreeDStrength, 0.3f, 3f, "F2");
                     GUILayout.Label("灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；");
-                    GUILayout.Label("音符越靠近灭点越窄、越矮，判定线/判定框/标签在灭点这一端，不受影响。");
+                    GUILayout.Label("音符越靠近灭点越窄越矮，越靠近判定线越大越快。判定线/判定框/标签都在");
+                    GUILayout.Label("判定线这一端，不受影响。强度 = 判定线到「缩到一半」的距离的倒数：");
+                    GUILayout.Label("1.00 时音符在判定线附近的屏幕速度和关掉 3D 时一样。");
                 }
 
                 Toggle("长按（hold）支持", ref Cfg.HoldSupport);
                 if (Cfg.HoldSupport)
                 {
-                    GUILayout.Label("读 scrFloor.holdLength 画长按长条（末端正好是松手时刻）；");
+                    GUILayout.Label("读 scrFloor.holdLength 画长按长条：长条末端正好接上下一颗音符的开头");
+                    GUILayout.Label("（和游戏自己一样，游戏的 hold 尾就是下一块砖）；");
                     GUILayout.Label("拆手序还会把松手当成一颗键，强制和长按开头同轨。颜色在「外观 / 颜色 → 长按」。");
                 }
 
@@ -372,6 +410,8 @@ namespace LaneReader
                 // ---- 娱乐（纯好玩，不影响读谱）----
                 if (Section("娱乐", ref _showFun))
                 {
+                  using (Indent())
+                  {
                     Toggle("轨道乱飞", ref Cfg.FunFly);
                     if (Cfg.FunFly)
                     {
@@ -390,15 +430,19 @@ namespace LaneReader
                     Toggle("四花瓣（四条轨道互相垂直）", ref Cfg.FunPetals);
                     if (Cfg.FunPetals)
                     {
-                        GUILayout.Label("每条轨道画在正中间再各自转 90 度，绕的是中心小方块一条边的中点，");
-                        GUILayout.Label("所以四条轨道朝四个互相垂直的方向伸出去（方块边长 = 轨道宽 + 间距）。");
+                        GUILayout.Label("四条轨道的底部中心都在判定线中点，各绕它转 0/90/180/270 度，");
+                        GUILayout.Label("所以朝四个互相垂直的方向伸出去，中间没有方块。");
                     }
+                  }
                 }
+              }
             }
 
             // ---- 其它 ----------------------------------------------------------
             if (Section("其它", ref _showOther))
             {
+              using (Indent())
+              {
                 if (GUILayout.Button("切换键: " + Cfg.Key, GUILayout.Width(200f)))
                     Cfg.ToggleKey = NextKey(Cfg.ToggleKey);
                 Toggle("输出诊断日志", ref Cfg.DebugLog);
@@ -410,6 +454,7 @@ namespace LaneReader
                     Cfg.Save(modEntry);
                 GUILayout.EndHorizontal();
                 GUILayout.Label("改动即时生效；「保存」写进 Settings.json，关面板时 UMM 也会自动保存。");
+              }
             }
 
             GUILayout.EndVertical();
@@ -421,24 +466,64 @@ namespace LaneReader
         private const float SliderWidth = 200f;
         private const float NumberWidth = 66f;
 
-        /// <summary>A collapsible section header. Returns true while it is open.</summary>
+        /// <summary>How far each nesting level of the options pushes its contents right.</summary>
+        private const float IndentWidth = 16f;
+
+        /// <summary>How wide a section's header button is at nesting level 0.</summary>
+        private const float HeaderWidth = 330f;
+
+        /// <summary>Nesting level the panel is currently drawing at, for the header widths.</summary>
+        private static int _indentLevel;
+
+        /// <summary>
+        /// A collapsible section header. It is a BUTTON with an arrow - deliberately not a toggle.
+        /// A toggle draws the skin's little circle, and an empty circle next to a section name reads
+        /// as "this feature is switched off" rather than "this heading is folded away" (and a filled
+        /// one as "on"), which is exactly the confusion it caused. A button is pressed, not on/off.
+        ///
+        /// The body goes inside a <see cref="Indent"/> scope, so a section nested in a section is
+        /// visibly inset from the one that contains it; the header button also shrinks by the indent
+        /// so it still fits the panel at any nesting level.
+        /// </summary>
         private static bool Section(string title, ref bool open)
         {
             GUILayout.Space(6f);
-            bool next = GUILayout.Toggle(open, (open ? "▼ " : "▶ ") + title);
-            if (next != open)
-                open = next;
+            GUILayout.BeginHorizontal();
+            float width = Mathf.Max(120f, HeaderWidth - _indentLevel * IndentWidth);
+            if (GUILayout.Button((open ? "▼ " : "▶ ") + title, GUILayout.Width(width)))
+                open = !open;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
             return open;
+        }
+
+        /// <summary>
+        /// Indents everything drawn until it is disposed, which is what makes the panel's nesting
+        /// visible. A using block rather than a Begin/End pair on purpose: it is closed on the way
+        /// out even if the body throws, so the IMGUI layout groups cannot be left open.
+        /// </summary>
+        private static IDisposable Indent()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(IndentWidth);
+            GUILayout.BeginVertical();
+            _indentLevel++;
+            return new IndentScope();
+        }
+
+        private sealed class IndentScope : IDisposable
+        {
+            public void Dispose()
+            {
+                GUILayout.EndVertical();
+                GUILayout.EndHorizontal();
+                _indentLevel--;
+            }
         }
 
         private static void Space()
         {
             GUILayout.Space(4f);
-        }
-
-        private static bool Fold(string text, bool open)
-        {
-            return GUILayout.Toggle(open, " " + text);
         }
 
         private static void Toggle(string label, ref bool value)
