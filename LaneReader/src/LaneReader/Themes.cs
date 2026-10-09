@@ -9,6 +9,12 @@ namespace LaneReader
     /// nothing here is special: once applied, the player can keep editing any single colour. The
     /// two entries that matter most are the first two - they are the "dark level, white lines" and
     /// "light level, black lines" pair the old LightBackground toggle used to switch between.
+    ///
+    /// One rule holds for all of them: a theme never gives the lanes and the notes the same colour.
+    /// The lane body is drawn with <see cref="Settings.LaneOpacity"/> on top, so at the default few
+    /// percent the two look nothing alike either way - but a player who winds that opacity up to
+    /// 100% has to still be able to tell which bar is a lane and which is a note, so every theme
+    /// keeps a clear difference in brightness (or hue) between the two.
     /// </summary>
     internal static class Themes
     {
@@ -20,6 +26,7 @@ namespace LaneReader
             "黄金 黑底",
             "四轨彩虹",
             "极简 纯白",
+            "纯黑底 经典白线",
         };
 
         internal static void Apply(Settings s, int index)
@@ -35,7 +42,8 @@ namespace LaneReader
                 case 2: Neon(s); break;
                 case 3: Gold(s); break;
                 case 4: Rainbow(s); break;
-                default: Minimal(s); break;
+                case 5: Minimal(s); break;
+                default: BlackOpaque(s); break;
             }
         }
 
@@ -94,11 +102,13 @@ namespace LaneReader
             s.LaneColour = new Color(1f, 1f, 1f, 1f);
             s.LaneEdgeColour = new Color(1f, 1f, 1f, 0.28f);
 
+            // The lanes are the same four hues as the notes but around half the brightness, so the
+            // notes still stand out if the lane opacity is wound up.
             s.LaneSeparate = true;
             s.LaneColours = new Color[]
             {
-                new Color(1.00f, 0.35f, 0.35f, 1f), new Color(1.00f, 0.85f, 0.30f, 1f),
-                new Color(0.35f, 0.95f, 0.55f, 1f), new Color(0.40f, 0.65f, 1.00f, 1f),
+                new Color(0.55f, 0.18f, 0.18f, 1f), new Color(0.55f, 0.45f, 0.14f, 1f),
+                new Color(0.16f, 0.50f, 0.28f, 1f), new Color(0.20f, 0.34f, 0.55f, 1f),
             };
 
             s.NoteSeparate = true;
@@ -114,7 +124,11 @@ namespace LaneReader
         private static void Minimal(Settings s)
         {
             Lines(s, new Color(1f, 1f, 1f, 1f));
-            s.LaneColour = new Color(1f, 1f, 1f, 1f);
+
+            // The lane body is a dim grey rather than the note's white. It used to be the same
+            // colour: with the default 4% lane opacity that made no difference, but at 100% the two
+            // were indistinguishable.
+            s.LaneColour = new Color(0.62f, 0.62f, 0.62f, 1f);
             s.LaneEdgeColour = new Color(1f, 1f, 1f, 1f);
             s.LaneSeparate = false;
             s.NoteSeparate = false;
@@ -123,6 +137,22 @@ namespace LaneReader
 
             s.LaneOpacity = 0.04f;
             s.BeatLineAlpha = 0.10f;
+        }
+
+        /// <summary>
+        /// The classic look on an opaque black backdrop - the theme for getting rid of the level's own
+        /// background altogether, which the overlay can now paint over (see
+        /// <see cref="Settings.BackgroundEnabled"/>).
+        ///
+        /// Everything else is <see cref="Classic"/>, i.e. white lanes and lines with a blue left hand
+        /// and an orange right hand: that is the palette this mod's default look was designed for a
+        /// dark level to begin with, so a solid black screen is where it reads best.
+        /// </summary>
+        private static void BlackOpaque(Settings s)
+        {
+            Classic(s);
+            s.BackgroundEnabled = true;
+            s.BackgroundColour = new Color(0f, 0f, 0f, 1f);
         }
 
         /// <summary>Every line-ish element in one colour: judgement line, boxes, beats, bars, labels, fps.</summary>
