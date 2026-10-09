@@ -1090,12 +1090,26 @@ namespace LaneReader
             // vanishing point, so it is also the x the 3D mode tapers towards.
             float cx = w * 0.5f + Cfg.OffsetXPx * refScale;
 
+            // ---- the 3D projection ----------------------------------------------
+            // See View: with 3D on, everything that falls along a lane is placed by one pinhole
+            // camera whose vanishing point is exactly the lane top, and with 3D off the view is the
+            // plain linear placement the overlay has always used.
+            Field field = new Field();
+            field.View = View.Make(Cfg.ThreeDLanes, judgeY, laneLen);
+            field.X0 = x0;
+            field.Width = laneW;
+            field.Gap = laneGap;
+            field.Cx = cx;
+            field.JudgeY = judgeY;
+            field.Top = laneTop;
+            field.NoteH = noteH;
+
             // ---- lanes ----------------------------------------------------------
             if (Cfg.ShowLanes)
             {
                 if (Cfg.ThreeDLanes)
                 {
-                    DrawLanes3D(cx, x0, laneW, laneGap, judgeY, laneTop, laneLen);
+                    DrawLanes3D(field);
                 }
                 else
                 {
@@ -1124,7 +1138,7 @@ namespace LaneReader
             // they are a reading aid, not a playfield element. They scroll with the clock, so the
             // pre-start prompt (which draws the frame only) leaves them out.
             if (drawNotes && Cfg.ShowBeatLines && Chart.Ready)
-                DrawBeatLines(refScale, w, x0, total, judgeY, laneTop, speed, noteH, now);
+                DrawBeatLines(field, refScale, w, x0, total, judgeY, laneTop, speed, noteH, now);
 
             // ---- judgement line -------------------------------------------------
             if (Cfg.ShowJudgeLine)
@@ -1229,15 +1243,29 @@ namespace LaneReader
                     // other reference makes it look like the note snaps backwards on contact.
                     float boxBottom = judgeY + noteH * 0.5f;
 
-                    // Falling note: its bottom edge travels down to the box bottom.
-                    float y = boxBottom - noteH - (float)((note.HitTime - now) * speed);
+                    // How far above the judgement line the note is, in flat pixels of fall: its
+                    // CENTRE is exactly (hit time - now) * speed above the line, so at the hit it sits
+                    // centred on the line - which is where the strike pop grows from.
+                    float fall = (float)((note.HitTime - now) * speed);
+                    float noteScale = field.View.Scale(fall);
+                    float noteRise = field.View.Rise(fall);
+                    float centreY = judgeY - noteRise;
+                    float y = centreY - noteH * 0.5f;             // the note's flat top edge
 
-                    // The note comes into being at the top of the lane, not at the screen edge: with a
-                    // pinned lane length the lane top is above the screen's, so a note simply appears
-                    // fully formed there (the same thing the lane bodies do). y only grows towards the
-                    // line, so once a note is fully below the top it stays drawn.
-                    if (y < laneTop || y > boxBottom + noteH * 2f)
+                    // Coming into being: flat, at the top of the lane, so a note simply appears there
+                    // fully formed (the same thing the lane bodies do). Under 3D there is no such edge
+                    // - the lane runs all the way to the vanishing point - so a note shrinks towards
+                    // nothing as it climbs and is culled once it is too small to read. Without that
+                    // every note left in the chart would be drawn as a speck around that point.
+                    if (Cfg.ThreeDLanes)
+                    {
+                        if (noteH * noteScale < 1.5f)
+                            continue;
+                    }
+                    else if (y < laneTop || y > boxBottom + noteH * 2f)
+                    {
                         continue;
+                    }
 
                     float x = LaneX(note.Lane, x0, laneW, laneGap, cx);
                     Color c = NoteBodyColour(note.Lane);
@@ -1281,15 +1309,15 @@ namespace LaneReader
 
                 if (Cfg.ShowNotes)
                 {
-                    // Under 3D the note keeps its bottom edge where the flat note's was - the arrival
-                    // at the line stays exact - and only its width and height shrink with distance.
-                    // With 3D off, depth is 1 and this is the plain lane-width rectangle it always was.
-                    float depth = Depth(y + noteH * 0.5f, judgeY, laneTop);
-                    float bodyW = Mathf.Max(1f, (laneW - 4f) * depth);
-                    float bodyH = Mathf.Max(1f, noteH * (0.35f + 0.65f * depth));
-                    float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, depth)
+                    // The note's box, projected: its size and its distance from the lane group's
+                    // centre shrink together, which is what keeps it exactly on its own lane's
+                    // converging edges instead of beside them. With 3D off the scale is 1 and this is
+                    // the plain lane-width rectangle it always was.
+                    float bodyW = Mathf.Max(1f, (laneW - 4f) * noteScale);
+                    float bodyH = Mathf.Max(1f, noteH * noteScale);
+                    float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, noteScale)
                                        + LaneWanderX(note.Lane);
-                    float bodyY = y + noteH - bodyH + LaneWanderY(note.Lane);
+                    float bodyY = centreY - bodyH * 0.5f + LaneWanderY(note.Lane);
                     Rect body = new Rect(bodyCentre - bodyW * 0.5f, bodyY, bodyW, bodyH);
 
                     // The trail only makes sense while the clock is moving: it is the distance the
@@ -1299,16 +1327,18 @@ namespace LaneReader
                     {
                         float travel = (float)((now - _lastTrailTime) * speed);
                         if (travel > 0.05f && travel < h * 0.5f)
-                            DrawTrail(body, c, travel, laneTop);
+                            DrawTrail(field, c, fall, travel, note.Lane);
                     }
 
                     FillNote(body, c, edge, refScale);
 
-                    // A hold's body: a bar running from the head up to the release. Its length is
-                    // the hold's duration in seconds times the fall speed, so the bar's far end
-                    // arrives at the line exactly when the release is due.
+                    // A hold's body: a bar running from the head up to the release, which is the next
+                    // tile's own arrival time - see ChartReader, where HoldSeconds is the whole gap to
+                    // the next note. Its far end therefore lands exactly on that note, at every
+                    // moment, and the bar spans the whole reach of the hold.
                     if (Cfg.HoldSupport && note.HoldSeconds > 0.0)
-                        DrawHoldBar(body, note.Lane, (float)(note.HoldSeconds * speed), depth);
+                        DrawHoldBar(field, note.Lane, fall + noteH * 0.5f,
+                            fall + noteH * 0.5f + (float)(note.HoldSeconds * speed));
                 }
                 }
 
@@ -1322,12 +1352,17 @@ namespace LaneReader
         /// <summary>
         /// The experimental motion-blur trail: the note, drawn again where it was on the previous
         /// frames, faded. <paramref name="travel"/> is how far it moved since the last frame, so the
-        /// copies land exactly on the previous frames' positions rather than on a guess.
+        /// copies land exactly on the previous frames' positions rather than on a guess - and they go
+        /// through the same projection as the note itself, so under 3D the ghosts stay on the note's
+        /// own lane (offsetting them by <c>travel</c> pixels straight up would trail them off the lane
+        /// as it narrows).
         /// </summary>
-        private static void DrawTrail(Rect r, Color c, float travel, float laneTop)
+        private static void DrawTrail(Field field, Color c, float fall, float travel, int lane)
         {
             int layers = Mathf.Clamp(Cfg.SmoothGhosts, 1, 10);
             float strength = Mathf.Clamp01(Cfg.SmoothStrength);
+            float wanderX = LaneWanderX(lane);
+            float wanderY = LaneWanderY(lane);
 
             // Far layers first, so the nearest one ends up on top of them and directly under the note.
             for (int k = layers; k >= 1; k--)
@@ -1336,11 +1371,17 @@ namespace LaneReader
                 if (alpha <= 0.004f)
                     continue;
 
-                float y = r.y - travel * k;
-                if (y < laneTop)
+                float d = fall + travel * k;
+                float scale = field.View.Scale(d);
+                float height = Mathf.Max(1f, field.NoteH * scale);
+                float top = field.View.JudgeY - field.View.Rise(d) - height * 0.5f + wanderY;
+
+                if (!Cfg.ThreeDLanes && top < field.Top)
                     continue;                       // above the playfield, same gate as the note
 
-                Fill(new Rect(r.x, y, r.width, r.height), Fade(c, alpha));
+                float width = Mathf.Max(1f, (field.Width - 4f) * scale);
+                float centre = field.Centre(lane, scale) + wanderX;
+                Fill(new Rect(centre - width * 0.5f, top, width, height), Fade(c, alpha));
             }
         }
 
@@ -1462,63 +1503,172 @@ namespace LaneReader
         // ---- experimental 3D -------------------------------------------------
 
         /// <summary>
-        /// Perspective scale at screen height <paramref name="y"/>: 1 at the judgement line, exactly
-        /// 0 at the lane top (the vanishing point), and in between
-        /// (1 - t) / (1 + strength * t) with t the fraction of the way up the lane. Outside the lane
-        /// (or with 3D off, or with no room to taper) it is 1, so every caller can use it
-        /// unconditionally.
+        /// The projection of the playfield, resolved once per frame (see <see cref="Field"/>).
+        ///
+        /// 3D puts the vanishing point exactly at the lane top - the "lane length" setting is its
+        /// height above the judgement line - and projects everything that falls along a lane through
+        /// one pinhole camera. A point that is <c>d</c> pixels of fall above the judgement line ends
+        /// up
+        /// <code>
+        ///     rise(d)  = L * d / (d + eye)       pixels above the judgement line
+        ///     scale(d) = eye / (d + eye)         times its flat size
+        /// </code>
+        /// where L is the lane length and eye = L / strength is the fall distance at which a point has
+        /// shrunk to half size and climbed to half the height of the lane.
+        ///
+        /// That pair is the whole model, and it is what makes the lane edges straight: scale = 1 -
+        /// rise / L, so a point's distance from the lane group's centre line is proportional to its
+        /// height above the line. That IS the vanishing-point property, and it is why the four lanes
+        /// meet at one point, why a note slides along its lane's edges instead of beside them, and why
+        /// the lanes can be drawn as plain triangles instead of the sliced stacks the first attempt
+        /// used. Notes are also genuinely slower up high and faster near the line, which is what a
+        /// receding lane does; the hit moment is exact either way, because rise(0) = 0.
+        ///
+        /// The first attempt instead scaled each element by a hand-written taper and left every y
+        /// linear, so the lanes converged but nothing that fell along them did - the notes ran on a
+        /// flat plane and only their width shrank, which read as four lines crossing in mid-air.
         /// </summary>
-        private static float Depth(float y, float judgeY, float laneTop)
+        private struct View
         {
-            if (!Cfg.ThreeDLanes)
-                return 1f;
-            if (laneTop >= judgeY)
-                return 1f;
+            /// <summary>The judgement line's y.</summary>
+            public float JudgeY;
 
-            float t = Mathf.Clamp01((judgeY - y) / (judgeY - laneTop));
-            return (1f - t) / (1f + Mathf.Max(0f, Cfg.ThreeDStrength) * t);
+            /// <summary>The lane length: judgement line to lane top, which is the vanishing point.</summary>
+            public float LineLen;
+
+            /// <summary>Fall distance at which a point is half size. Unused when flat.</summary>
+            public float Eye;
+
+            /// <summary>True with 3D off, or when there is no lane height to taper over.</summary>
+            public bool Flat;
+
+            /// <summary>
+            /// The view for this frame. <paramref name="laneLen"/> is the lane's own length, so a
+            /// degenerate geometry (the judgement line at the very top of the screen) falls back to
+            /// the flat rules rather than dividing by zero.
+            /// </summary>
+            public static View Make(bool threeD, float judgeY, float laneLen)
+            {
+                var view = new View();
+                view.JudgeY = judgeY;
+                view.LineLen = Mathf.Max(1f, laneLen);
+                view.Flat = !threeD || laneLen <= 1f;
+                view.Eye = view.LineLen / Mathf.Clamp(Cfg.ThreeDStrength, 0.3f, 3f);
+                return view;
+            }
+
+            /// <summary>How far above the judgement line a point that far up the fall sits.</summary>
+            public float Rise(float d)
+            {
+                if (Flat)
+                    return d;
+                if (d <= 0f)
+                    return 0f;
+                return LineLen * d / (d + Eye);
+            }
+
+            /// <summary>What a flat size has to be multiplied by at that distance.</summary>
+            public float Scale(float d)
+            {
+                if (Flat || d <= 0f)
+                    return 1f;
+                return Eye / (d + Eye);
+            }
+
+            /// <summary>
+            /// The far end of the visible fall: where things have shrunk to a tenth. The lane's own
+            /// far end is the vanishing point, which is infinitely far away, so a horizon has to be
+            /// picked somewhere - this is the one the beat grid and the note cull use.
+            /// </summary>
+            public float Horizon
+            {
+                get { return Flat ? float.MaxValue : Eye * 9f; }
+            }
+        }
+
+        /// <summary>
+        /// Where the four lanes are, in one value. The note, trail and hold-bar helpers all need the
+        /// same handful of numbers plus the projection, and passing them loose made every call site a
+        /// wall of floats.
+        /// </summary>
+        private struct Field
+        {
+            public float X0;        // left edge of lane 0
+            public float Width;     // one lane's width
+            public float Gap;       // between lanes
+            public float Cx;        // the overlay's centre line: where the vanishing point sits
+            public float JudgeY;    // the judgement line
+            public float Top;       // the lane top, i.e. the vanishing point's height
+            public float NoteH;     // a note's flat height
+            public View View;
+
+            /// <summary>A lane's flat centre line, before the perspective is applied.</summary>
+            public float SlotCentre(int lane)
+            {
+                return LaneX(lane, X0, Width, Gap, Cx) + Width * 0.5f;
+            }
+
+            /// <summary>That centre line at perspective scale <paramref name="p"/>.</summary>
+            public float Centre(int lane, float p)
+            {
+                return Cx + (SlotCentre(lane) - Cx) * p;
+            }
         }
 
         /// <summary>Where lane <paramref name="lane"/>'s centre sits at the given perspective scale.</summary>
-        private static float LaneCentre(float lane, float x0, float laneW, float laneGap, float cx, float p)
+        private static float LaneCentre(int lane, float x0, float laneW, float laneGap, float cx, float p)
         {
-            float centre = LaneX((int)lane, x0, laneW, laneGap, cx) + laneW * 0.5f;
+            float centre = LaneX(lane, x0, laneW, laneGap, cx) + laneW * 0.5f;
             return cx + (centre - cx) * p;
         }
 
         /// <summary>
-        /// The 3D lanes: instead of four rectangles, each lane is a stack of short slices whose
-        /// width and centre are re-evaluated per slice, which is what makes the four of them converge
-        /// on the single vanishing point at the lane top. Slices are one fill each (plus the two
-        /// edges), so this costs ~16x the draw calls of the flat lanes - fine for an experiment.
+        /// The 3D lane group: four bodies that share one apex - the vanishing point at the lane top,
+        /// which is exactly where the "lane length" setting puts the top of the lane.
+        ///
+        /// Each lane is drawn as a stack of horizontal bands, and the width of a band is the lane's
+        /// width at that band's own height. Because the scale falls off linearly with height (see
+        /// View), the two edges of the resulting stack are straight lines running from the lane's base
+        /// corners to that one shared apex - the lanes really do converge on a single point, with no
+        /// gap or overlap between them.
+        ///
+        /// Bands rather than one triangle because IMGUI only fills axis-aligned rectangles. At this
+        /// many bands the staircase along an edge is well under a pixel, and a 2px edge line is drawn
+        /// over it anyway. The whole group is one material, so IMGUI batches all of it into a single
+        /// draw call regardless of the band count.
         /// </summary>
-        private static void DrawLanes3D(float cx, float x0, float laneW, float laneGap,
-            float judgeY, float laneTop, float laneLen)
+        private static void DrawLanes3D(Field field)
         {
-            const int Slices = 16;
-            float step = laneLen / Slices;
+            const int Bands = 96;
+
+            float len = field.JudgeY - field.Top;
+            float step = len / Bands;
             if (step <= 0f)
                 return;
 
-            for (int s = 0; s < Slices; s++)
+            for (int band = 0; band < Bands; band++)
             {
-                float y = laneTop + s * step;
-                float p = Depth(y + step * 0.5f, judgeY, laneTop);
-                float width = laneW * p;
-                if (width < 0.5f)
-                    continue;
+                // The band's middle, measured above the judgement line. Its height is the only thing
+                // the scale needs, since scale = 1 - rise / len.
+                float rise = step * (band + 0.5f);
+                float p = 1f - rise / len;
+                float width = field.Width * p;
+                if (width < 0.4f)
+                    continue;                       // sub-pixel sliver at the vanishing point
 
+                float y = field.JudgeY - rise - step * 0.5f;    // the band's top edge
                 float edge = Mathf.Max(1f, 2f * p);
+
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
                     Matrix4x4 laneMatrix = GUI.matrix;
                     if (Cfg.FunPetals)
-                        GUIUtility.RotateAroundPivot(i * 90f,
-                            PetalRoot(cx, judgeY));
+                        GUIUtility.RotateAroundPivot(i * 90f, PetalRoot(field.Cx, field.JudgeY));
 
-                    float centre = LaneCentre(i, x0, laneW, laneGap, cx, p) + LaneWanderX(i);
+                    float centre = field.Centre(i, p) + LaneWanderX(i);
                     float top = y + LaneWanderY(i);
                     float left = centre - width * 0.5f;
+
                     Fill(new Rect(left, top, width, step + 0.5f), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
                     Color line = LaneEdgeColour(i);
                     Fill(new Rect(left, top, edge, step + 0.5f), line);
@@ -1529,24 +1679,49 @@ namespace LaneReader
         }
 
         /// <summary>
-        /// The bar between a hold's head and its release, drawn upwards from the head's top edge.
-        /// <paramref name="length"/> is the hold's duration in pixels of fall (seconds x speed), so
-        /// the bar's far edge reaches the judgement line exactly at the release. Under 3D the bar
-        /// keeps the head's perspective scale rather than tapering along its length - a straight
-        /// bar in screen space reads better than a wedge, and this is an experimental view anyway.
+        /// A hold's body: the bar between the head and the tail of the hold, drawn upwards from the
+        /// head's own top edge. <paramref name="headTop"/> and <paramref name="tailTop"/> are flat
+        /// pixels of fall, and the tail is the next tile's arrival, so the bar's far end lands exactly
+        /// on the next note at every moment - the bar is the whole reach of the hold, which is what
+        /// the game itself draws (its hold mesh runs from the held tile to that tile's next floor).
+        ///
+        /// It is banded as well, so under 3D it tapers with the lane it sits in; the body's colour
+        /// carries its own alpha (and the width is a fraction of the lane's width, so it stays
+        /// proportional when the note is narrowed by the perspective).
         /// </summary>
-        private static void DrawHoldBar(Rect head, int lane, float length, float depth)
+        private static void DrawHoldBar(Field field, int lane, float headTop, float tailTop)
         {
-            if (length <= 0f)
+            float span = tailTop - headTop;
+            if (span <= 0f)
                 return;
 
-            float fraction = Mathf.Clamp(Cfg.HoldWidthFraction, 0.05f, 1f);
-            float width = Mathf.Max(1f, head.width * fraction);
             Color colour = HoldBodyColour(lane);
             if (colour.a <= 0.002f)
                 return;
 
-            Fill(new Rect(head.x + (head.width - width) * 0.5f, head.y - length, width, length), colour);
+            float fraction = Mathf.Clamp(Cfg.HoldWidthFraction, 0.05f, 1f);
+            float wanderX = LaneWanderX(lane);
+            float wanderY = LaneWanderY(lane);
+
+            const int Bands = 24;
+            for (int band = Bands - 1; band >= 0; band--)
+            {
+                float d0 = headTop + span * band / Bands;
+                float d1 = headTop + span * (band + 1) / Bands;
+                float rise0 = field.View.Rise(d0);
+                float rise1 = field.View.Rise(d1);
+                float height = rise1 - rise0;
+                if (height <= 0f)
+                    continue;
+
+                float p = field.View.Scale((d0 + d1) * 0.5f);
+                float width = Mathf.Max(1f, (field.Width - 4f) * fraction * p);
+                float centre = field.Centre(lane, p) + wanderX;
+
+                // The band's top edge is the farther end of it, i.e. the bigger rise.
+                Fill(new Rect(centre - width * 0.5f, field.View.JudgeY - rise1 + wanderY,
+                    width, height + 0.5f), colour);
+            }
         }
 
         // ---- colours --------------------------------------------------------
@@ -1600,7 +1775,7 @@ namespace LaneReader
         /// line exactly on its beat, and it is only drawn from <paramref name="laneTop"/> downwards -
         /// the same top edge the notes appear at.
         /// </summary>
-        private static void DrawBeatLines(float refScale, float screenW, float x0, float total,
+        private static void DrawBeatLines(Field field, float refScale, float screenW, float x0, float total,
             float judgeY, float laneTop, float speed, float noteH, double now)
         {
             IList<BeatLine> lines = Chart.BeatLines;
@@ -1610,10 +1785,19 @@ namespace LaneReader
             int perBar = Mathf.Clamp(Cfg.BeatsPerBar, 2, 16);
             int downbeat = Mathf.RoundToInt(Cfg.BeatPhaseBeats);
             float boxBottom = judgeY + noteH * 0.5f;
-            double topTime = now + (boxBottom - laneTop) / speed;   // the time at the top of the lane
+
+            // How far ahead in time the lines are drawn. Flat, that is exactly the top of the lane -
+            // the same bound the notes come into being at. Under 3D there is no such edge (the lane's
+            // far end is the vanishing point, which is infinitely far away), so the grid runs out to
+            // the far field instead: the distance at which the projection has shrunk things to a
+            // tenth, where a line and its neighbour are a pixel apart.
+            double topTime = Cfg.ThreeDLanes
+                ? now + field.View.Horizon / speed
+                : now + (boxBottom - laneTop) / speed;
 
             float left = Cfg.BeatLineFullWidth ? 0f : x0;
             float width = Cfg.BeatLineFullWidth ? screenW : total;
+            float cx = screenW * 0.5f + Cfg.OffsetXPx * refScale;
 
             for (int index = FirstLineAtOrAfter(lines, now); index < lines.Count; index++)
             {
@@ -1631,7 +1815,8 @@ namespace LaneReader
                 Color ink = bar ? Cfg.BarLineColour : Cfg.BeatLineColour;
                 float alpha = Mathf.Clamp01(ink.a * Cfg.BeatLineAlpha * (bar ? 1.8f : 1f));
 
-                float y = boxBottom - (float)((line.Time - now) * speed);
+                float fall = (float)((line.Time - now) * speed);
+                float y = judgeY - field.View.Rise(fall);
 
                 // Lines are walked in time order and y only decreases, so the first one above the
                 // lane top ends the loop.
@@ -1642,12 +1827,11 @@ namespace LaneReader
                 // was asked to span the whole screen anyway.
                 float lineLeft = left;
                 float lineWidth = width;
-                float depth = Depth(y, judgeY, laneTop);
-                float cx = screenW * 0.5f + Cfg.OffsetXPx * refScale;
-                if (!Cfg.BeatLineFullWidth && depth != 1f)
+                float scale = field.View.Scale(fall);
+                if (!Cfg.BeatLineFullWidth && scale != 1f)
                 {
-                    lineLeft = cx + (x0 - cx) * depth;
-                    lineWidth = total * depth;
+                    lineLeft = cx + (x0 - cx) * scale;
+                    lineWidth = total * scale;
                 }
 
                 Fill(new Rect(lineLeft, y, lineWidth, thick), new Color(ink.r, ink.g, ink.b, alpha));

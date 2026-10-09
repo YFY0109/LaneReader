@@ -190,21 +190,32 @@ namespace LaneReader
         // ------------------------------------------------------------------ experimental
 
         /// <summary>
-        /// Experimental 3D lanes: the four lanes converge towards a vanishing point that sits
+        /// Experimental 3D lanes: the four lanes converge on a vanishing point that sits
         /// <see cref="LaneLengthPx"/> above the judgement line - i.e. exactly at the lane top, which
-        /// is also where notes and beat lines come into being. Lanes are drawn as slices with a
-        /// perspective scale, and a falling note's width follows the same scale, so a note shrinks as
-        /// it approaches the vanishing point.
+        /// is also where notes and beat lines come into being.
         ///
-        /// The scale is (1 - t) / (1 + strength * t) with t = 0 at the judgement line and t = 1 at
-        /// the lane top: 1 at the line, exactly 0 at the far end, and `strength` bends how early the
-        /// taper starts. The judgement line, the boxes and the labels are all at t = 0 and therefore
+        /// The whole playfield is put through one pinhole camera (see Plugin.View). A point that is
+        /// <c>d</c> pixels of fall above the judgement line is drawn
+        /// <code>
+        ///     rise  = L * d / (d + eye)
+        ///     scale = eye / (d + eye)
+        /// </code>
+        /// above the line and that much smaller, with eye = L / <see cref="ThreeDStrength"/>. So a
+        /// note slides along its own lane's edges all the way to the vanishing point, and it is
+        /// genuinely slower up there and faster as it arrives - while the hit moment stays exact,
+        /// because rise(0) = 0. The judgement line, the boxes and the labels are all at d = 0 and are
         /// untouched.
         /// </summary>
         public bool ThreeDLanes = false;
 
-        /// <summary>How early the 3D taper starts: 0 is a straight cone, higher hugs the line longer.</summary>
-        public float ThreeDStrength = 1.2f;
+        /// <summary>
+        /// How close the camera is: eye = lane length / strength, i.e. a note has shrunk to half size
+        /// and climbed to half the lane once it is (lane length / strength) pixels of fall above the
+        /// line. 1.0 is the natural setting - the fall then covers the same screen distance near the
+        /// judgement line as it does with 3D off, so notes arrive at the speed the fall-speed slider
+        /// promises - and higher values pull the camera in for a more violent taper.
+        /// </summary>
+        public float ThreeDStrength = 1f;
 
         // ---- 娱乐（实验性分类里的小分类）----
 
