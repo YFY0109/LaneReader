@@ -226,9 +226,11 @@ namespace LaneReader
 
         /// <summary>
         /// Fun: the four lanes point in four mutually perpendicular directions instead of all
-        /// pointing up. Each lane is drawn as one lane in the middle of the overlay and then rotated
-        /// 90 degrees further than the last, about a root on the edge of a small square - so the four
-        /// of them read as petals around that square.
+        /// pointing up. Each lane is drawn centred on the overlay and then rotated a quarter turn
+        /// further than the last about the middle of the judgement line, so their bottom centres all
+        /// sit on that one point and the four bodies radiate from it. (There used to be a small
+        /// square in the middle - the rotations were anchored on its four edge midpoints - and it
+        /// was removed on request: the empty box in the centre read as a hole in the overlay.)
         /// </summary>
         public bool FunPetals = false;
 

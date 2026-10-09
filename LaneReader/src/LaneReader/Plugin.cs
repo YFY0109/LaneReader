@@ -1104,7 +1104,7 @@ namespace LaneReader
                         Matrix4x4 laneMatrix = GUI.matrix;
                         if (Cfg.FunPetals)
                             GUIUtility.RotateAroundPivot(i * 90f,
-                                PetalRoot(i, cx, judgeY, laneW + laneGap));
+                                PetalRoot(cx, judgeY));
 
                         float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
                         float y = laneTop + LaneWanderY(i);
@@ -1143,7 +1143,7 @@ namespace LaneReader
                     Matrix4x4 laneMatrix = GUI.matrix;
                     if (Cfg.FunPetals)
                         GUIUtility.RotateAroundPivot(i * 90f,
-                            PetalRoot(i, cx, judgeY, laneW + laneGap));
+                            PetalRoot(cx, judgeY));
 
                     float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
                     float y = judgeY + 6f * refScale + LaneWanderY(i);
@@ -1166,7 +1166,7 @@ namespace LaneReader
                     Matrix4x4 laneMatrix = GUI.matrix;
                     if (Cfg.FunPetals)
                         GUIUtility.RotateAroundPivot(i * 90f,
-                            PetalRoot(i, cx, judgeY, laneW + laneGap));
+                            PetalRoot(cx, judgeY));
 
                     float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
                     float top = judgeY - noteH * 0.5f + LaneWanderY(i);
@@ -1211,7 +1211,7 @@ namespace LaneReader
                 Matrix4x4 laneMatrix = GUI.matrix;
                 if (Cfg.FunPetals)
                     GUIUtility.RotateAroundPivot(pass * 90f,
-                        PetalRoot(pass, cx, judgeY, laneW + laneGap));
+                        PetalRoot(cx, judgeY));
 
                 for (int i = 0; i < count; i++)
                 {
@@ -1422,17 +1422,15 @@ namespace LaneReader
             return x0 + lane * (laneW + laneGap);
         }
 
-        /// <summary>The point a petal rotates about: the middle of one edge of the centre square.</summary>
-        private static Vector2 PetalRoot(int lane, float cx, float judgeY, float side)
+        /// <summary>
+        /// The point every petal turns about: the middle of the judgement line, which is also where
+        /// all four lanes have their bottom centre. There is no centre square any more - the four
+        /// lanes simply radiate from this one point, each rotated a quarter turn further than the
+        /// last, so their bases share a centre and their bodies point (up, right, down, left).
+        /// </summary>
+        private static Vector2 PetalRoot(float cx, float judgeY)
         {
-            float half = side * 0.5f;
-            switch (((lane % 4) + 4) % 4)
-            {
-                case 0: return new Vector2(cx, judgeY - half);        // up
-                case 1: return new Vector2(cx + half, judgeY);        // right
-                case 2: return new Vector2(cx, judgeY + half);        // down
-                default: return new Vector2(cx - half, judgeY);       // left
-            }
+            return new Vector2(cx, judgeY);
         }
 
         // ---- experimental fun ------------------------------------------------
@@ -1516,7 +1514,7 @@ namespace LaneReader
                     Matrix4x4 laneMatrix = GUI.matrix;
                     if (Cfg.FunPetals)
                         GUIUtility.RotateAroundPivot(i * 90f,
-                            PetalRoot(i, cx, judgeY, laneW + laneGap));
+                            PetalRoot(cx, judgeY));
 
                     float centre = LaneCentre(i, x0, laneW, laneGap, cx, p) + LaneWanderX(i);
                     float top = y + LaneWanderY(i);
