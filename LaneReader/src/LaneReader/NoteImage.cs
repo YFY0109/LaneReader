@@ -5,54 +5,76 @@ using UnityEngine;
 namespace LaneReader
 {
     /// <summary>
-    /// The optional custom note sprite: a png (or jpg) on disk, drawn in place of the flat
-    /// coloured block. A relative path is resolved against the mod's own folder, so dropping
-    /// "note.png" next to LaneReader.dll is enough; an absolute path works too.
+    /// The optional custom sprites: a png (or jpg) on disk, drawn in place of a flat coloured block.
+    /// A relative path is resolved against the mod's own folder, so dropping "note.png" next to
+    /// LaneReader.dll is enough; an absolute path works too.
     ///
-    /// The file is re-read while the game runs, but at most once a second and only when its
-    /// on-disk timestamp changed, so a player can swap the image without restarting - and so a
-    /// missing or unreadable file costs one failed stat per second rather than one per frame.
-    /// The failure is reported through <see cref="Status"/>, which the settings panel shows.
+    /// There are two slots - the note's sprite and the hold bar's - and they are independent: either
+    /// can be used without the other. A sprite is drawn exactly as authored. Nothing tints it, and
+    /// the outline the flat block has is not drawn around it either: an image already carries the
+    /// colours and the shape its author wanted.
+    ///
+    /// A file is re-read while the game runs, but at most once a second and only when its on-disk
+    /// timestamp changed, so a player can swap the image without restarting - and so a missing or
+    /// unreadable file costs one failed stat per second rather than one per frame. The last outcome is
+    /// reported through <see cref="Status"/>, which the settings panel shows.
     /// </summary>
-    internal static class NoteImage
+    internal sealed class NoteImage
     {
-        private static Texture2D _texture;
-        private static System.Reflection.MethodInfo _loadImage;
-        private static string _loadedFrom;
-        private static long _loadedStamp = -1;
-        private static string _status = "尚未加载";
-        private static float _nextCheck;
+        /// <summary>The falling note's sprite.</summary>
+        internal const int Note = 0;
+
+        /// <summary>The hold bar's sprite.</summary>
+        internal const int Hold = 1;
+
+        private const int Slots = 2;
+
+        /// <summary>What each slot is called in the log and in the panel.</summary>
+        private static readonly string[] Labels = { "note image", "hold image" };
+
+        private readonly Texture2D[] _texture = new Texture2D[Slots];
+        private readonly string[] _loadedFrom = new string[Slots];
+        private readonly long[] _loadedStamp = new long[Slots];
+        private readonly string[] _status = { "尚未加载", "尚未加载" };
+        private readonly float[] _nextCheck = new float[Slots];
+        private System.Reflection.MethodInfo _loadImage;
+
+        /// <summary>Shared by both slots: the loader and its status are per-slot state.</summary>
+        internal static readonly NoteImage Instance = new NoteImage();
 
         /// <summary>What happened on the last load attempt, shown in the panel and logged on change.</summary>
-        internal static string Status
+        internal string Status(int slot)
         {
-            get { return _status; }
+            return _status[Clamp(slot)];
         }
 
-        /// <summary>Force the next <see cref="Get"/> to re-read the file.</summary>
-        internal static void Invalidate()
+        /// <summary>Force the next <see cref="Get"/> for one slot to re-read the file.</summary>
+        internal void Invalidate(int slot)
         {
-            _nextCheck = 0f;
-            _loadedFrom = null;
-            _loadedStamp = -1;
+            slot = Clamp(slot);
+            _nextCheck[slot] = 0f;
+            _loadedFrom[slot] = null;
+            _loadedStamp[slot] = -1;
         }
 
         /// <summary>
-        /// The note sprite, or null when none is configured, the file is unreadable, or it did not
-        /// decode. Callers fall back to the flat block on null.
+        /// The sprite for a slot, or null when none is configured, the file is unreadable, or it did
+        /// not decode. Callers fall back to the flat block on null.
         /// </summary>
-        internal static Texture2D Get(string configuredPath)
+        internal Texture2D Get(int slot, string configuredPath)
         {
-            if (Time.unscaledTime < _nextCheck)
-                return _texture;
+            slot = Clamp(slot);
 
-            _nextCheck = Time.unscaledTime + 1f;
+            if (Time.unscaledTime < _nextCheck[slot])
+                return _texture[slot];
+
+            _nextCheck[slot] = Time.unscaledTime + 1f;
 
             string path = Resolve(configuredPath);
             if (path == null)
             {
-                Drop();
-                SetStatus("未设置路径");
+                Drop(slot);
+                SetStatus(slot, "未设置路径");
                 return null;
             }
 
@@ -60,14 +82,14 @@ namespace LaneReader
             {
                 if (!File.Exists(path))
                 {
-                    Drop();
-                    SetStatus("找不到文件: " + path);
+                    Drop(slot);
+                    SetStatus(slot, "找不到文件: " + path);
                     return null;
                 }
 
                 long stamp = File.GetLastWriteTimeUtc(path).Ticks;
-                if (_texture != null && path == _loadedFrom && stamp == _loadedStamp)
-                    return _texture;
+                if (_texture[slot] != null && path == _loadedFrom[slot] && stamp == _loadedStamp[slot])
+                    return _texture[slot];
 
                 byte[] bytes = File.ReadAllBytes(path);
                 var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
@@ -85,8 +107,8 @@ namespace LaneReader
                 if (!ok)
                 {
                     UnityEngine.Object.Destroy(texture);
-                    Drop();
-                    SetStatus("解码失败（不是有效的 png/jpg？）: " + path);
+                    Drop(slot);
+                    SetStatus(slot, "解码失败（不是有效的 png/jpg？）: " + path);
                     return null;
                 }
 
@@ -94,19 +116,26 @@ namespace LaneReader
                 texture.filterMode = FilterMode.Bilinear;
                 texture.hideFlags = HideFlags.HideAndDontSave;
 
-                Drop();
-                _texture = texture;
-                _loadedFrom = path;
-                _loadedStamp = stamp;
-                SetStatus("已加载 " + texture.width + "x" + texture.height + ": " + Path.GetFileName(path));
-                return _texture;
+                Drop(slot);
+                _texture[slot] = texture;
+                _loadedFrom[slot] = path;
+                _loadedStamp[slot] = stamp;
+                SetStatus(slot, "已加载 " + texture.width + "x" + texture.height + ": " + Path.GetFileName(path));
+                return _texture[slot];
             }
             catch (Exception ex)
             {
-                Drop();
-                SetStatus("读取失败: " + ex.Message);
+                Drop(slot);
+                SetStatus(slot, "读取失败: " + ex.Message);
                 return null;
             }
+        }
+
+        private static int Clamp(int slot)
+        {
+            if (slot < 0)
+                return 0;
+            return slot >= Slots ? Slots - 1 : slot;
         }
 
         /// <summary>
@@ -117,7 +146,7 @@ namespace LaneReader
         /// assemblies, so naming the method at compile time fails with CS0012 before the byte[]
         /// overload we actually want is ever considered. The lookup is done once and cached.
         /// </summary>
-        private static bool Decode(Texture2D texture, byte[] bytes)
+        private bool Decode(Texture2D texture, byte[] bytes)
         {
             if (_loadImage == null)
                 _loadImage = FindLoadImage();
@@ -194,24 +223,24 @@ namespace LaneReader
             return string.IsNullOrEmpty(root) ? path : Path.Combine(root, path);
         }
 
-        private static void Drop()
+        private void Drop(int slot)
         {
-            if (_texture == null)
+            if (_texture[slot] == null)
                 return;
 
-            try { UnityEngine.Object.Destroy(_texture); }
+            try { UnityEngine.Object.Destroy(_texture[slot]); }
             catch { /* the reference is dropped either way */ }
-            _texture = null;
-            _loadedFrom = null;
-            _loadedStamp = -1;
+            _texture[slot] = null;
+            _loadedFrom[slot] = null;
+            _loadedStamp[slot] = -1;
         }
 
-        private static void SetStatus(string status)
+        private void SetStatus(int slot, string status)
         {
-            if (status == _status)
+            if (status == _status[slot])
                 return;
-            _status = status;
-            Plugin.Log("note image: " + status);
+            _status[slot] = status;
+            Plugin.Log(Labels[slot] + ": " + status);
         }
     }
 }

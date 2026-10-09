@@ -167,14 +167,29 @@ namespace LaneReader
                     GUILayout.Label("图片路径", GUILayout.Width(LabelWidth));
                     Cfg.NoteImagePath = GUILayout.TextField(Cfg.NoteImagePath, GUILayout.Width(320f));
                     if (GUILayout.Button("重新加载", GUILayout.Width(90f)))
-                        NoteImage.Invalidate();
+                        NoteImage.Instance.Invalidate(NoteImage.Note);
                     GUILayout.EndHorizontal();
                     GUILayout.Label("相对路径基于 mod 目录，例: note.png = " + ModPath + "\\note.png");
                     Toggle("保持宽高比", ref Cfg.NoteImageKeepAspect);
-                    NoteImage.Get(Cfg.NoteImagePath);            // refreshes the status line in place
-                    GUILayout.Label("状态: " + NoteImage.Status);
-                    GUILayout.Label("图片按原样画（不再着色）：没画到的地方就是透明的。");
-                    GUILayout.Label("打开「音符边框」时，边框只画在图片外面的一圈，不会垫在图片底下。");
+                    NoteImage.Instance.Get(NoteImage.Note, Cfg.NoteImagePath);   // refreshes the status line
+                    GUILayout.Label("状态: " + NoteImage.Instance.Status(NoteImage.Note));
+                    GUILayout.Label("图片按原样画：不加任何着色，也不画音符边框——没画到的地方就是透明的。");
+                    GUILayout.Label("「平滑下落」的拖尾重影也用这张图。");
+                }
+
+                Toggle("长按线条用自定义图片", ref Cfg.HoldImageEnabled);
+                if (Cfg.HoldImageEnabled)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("长按图片路径", GUILayout.Width(LabelWidth));
+                    Cfg.HoldImagePath = GUILayout.TextField(Cfg.HoldImagePath, GUILayout.Width(320f));
+                    if (GUILayout.Button("重新加载", GUILayout.Width(90f)))
+                        NoteImage.Instance.Invalidate(NoteImage.Hold);
+                    GUILayout.EndHorizontal();
+                    NoteImage.Instance.Get(NoteImage.Hold, Cfg.HoldImagePath);
+                    GUILayout.Label("状态: " + NoteImage.Instance.Status(NoteImage.Hold));
+                    GUILayout.Label("这张图会沿长条方向拉伸铺满（宽度仍按「长按线条」的粗细比例）；");
+                    GUILayout.Label("图片按原样画，长按的颜色/透明度不再乘上去。");
                 }
               }
             }
@@ -1344,7 +1359,7 @@ namespace LaneReader
                         // squeezes it along the lane as it climbs and it converges with its lane's
                         // edges; with 3D off the two edges are the plain flat rectangle it always was.
                         FillNotePlate(field, note.Lane, fall - noteH * 0.5f, fall + noteH * 0.5f,
-                            laneW - 4f, c, edge, refScale, true);
+                            laneW - 4f, NoCut, c, edge, refScale, true);
                         continue;
                     }
 
@@ -1440,23 +1455,20 @@ namespace LaneReader
                     continue;
 
                 // The ghost is the same plate, one frame further up the lane, so it flattens and
-                // narrows with its lane exactly like the note does.
+                // narrows with its lane exactly like the note does. Everything below the judgement line
+                // is behind it and is cut away rather than dropped whole, so the trail sinks into the
+                // line instead of blinking out with the note.
                 float d = fall + travel * k;
                 float near = d - field.NoteH * 0.5f;
                 float far = d + field.NoteH * 0.5f;
 
+                // Flat, the playfield ends at the lane top, so a ghost that has climbed past it is
+                // dropped - the same gate the note itself uses. Under 3D the lane runs on to the
+                // vanishing point and there is no such edge.
                 if (!Cfg.ThreeDLanes && far > field.JudgeY - field.Top)
-                    continue;                       // above the playfield, same gate as the note
-
-                // Eaten by the judgement line: everything below the line is behind it. The ghost is
-                // clipped rather than dropped, so the trail sinks into the line instead of blinking
-                // out with the note.
-                if (near < 0f)
-                    near = 0f;
-                if (far <= near)
                     continue;
 
-                FillNotePlate(field, lane, near, far, width, Fade(c, alpha), c, 1f, false);
+                FillNotePlate(field, lane, near, far, width, 0f, Fade(c, alpha), c, 1f, false);
             }
         }
 
@@ -1467,62 +1479,81 @@ namespace LaneReader
         /// (per lane, when the lane colours are separate) and it fades with the note, so a strike
         /// pop does not leave a hard-edged rectangle behind.
         ///
-        /// With a custom sprite the outline is a RING drawn around the sprite rather than a filled
-        /// rectangle behind it. That distinction is the whole point: a backing rectangle shows
-        /// through every transparent pixel of the sprite, which turns them into the outline colour
-        /// (visibly white with the default border colour) instead of leaving them transparent.
-        /// The sprite is drawn with its own colours - only the note's alpha, which is what makes a
-        /// struck note fade out, is applied on top of it.
+        /// With a custom sprite the note IS the sprite: the flat block and its outline are not drawn
+        /// at all. That is deliberate and it is what the player asked for - an image already carries
+        /// the colours and the shape its author wanted, and framing it in the outline colour only ever
+        /// put a box the player did not ask for around it. Only the note's alpha is applied on top, so
+        /// a struck note still fades out.
         /// </summary>
         private static void FillNote(Rect r, Color c, Color edge, float refScale)
         {
-            Texture2D image = Cfg.NoteImageEnabled ? NoteImage.Get(Cfg.NoteImagePath) : null;
+            Texture2D image = Cfg.NoteImageEnabled
+                ? NoteImage.Instance.Get(NoteImage.Note, Cfg.NoteImagePath)
+                : null;
+
+            if (image != null)
+            {
+                if (Cfg.NoteImageKeepAspect)
+                {
+                    float aspect = image.height > 0 ? (float)image.width / image.height : 1f;
+                    float iw = r.height * aspect;
+                    float ih = r.height;
+                    if (iw > r.width)
+                    {
+                        iw = r.width;
+                        ih = aspect > 0f ? r.width / aspect : r.height;
+                    }
+                    r = new Rect(r.x + (r.width - iw) * 0.5f, r.y + (r.height - ih) * 0.5f, iw, ih);
+                }
+
+                DrawSprite(r, image, c.a);
+                return;
+            }
 
             float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
             bool border = Cfg.ShowNoteBorder && r.width > b * 2f && r.height > b * 2f;
 
-            if (image == null)
+            if (!border)
             {
-                if (!border)
-                {
-                    Fill(r, c);
-                    return;
-                }
-
-                Fill(r, edge);
-                Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
+                Fill(r, c);
                 return;
             }
 
-            if (border)
-            {
-                float innerW = r.width - 2f * b;
-                float innerH = r.height - 2f * b;
+            Fill(r, edge);
+            Fill(new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b), c);
+        }
 
-                Fill(new Rect(r.x, r.y, r.width, b), edge);                     // top
-                Fill(new Rect(r.x, r.y + r.height - b, r.width, b), edge);      // bottom
-                Fill(new Rect(r.x, r.y + b, b, innerH), edge);                  // left
-                Fill(new Rect(r.x + r.width - b, r.y + b, b, innerH), edge);    // right
-
-                r = new Rect(r.x + b, r.y + b, innerW, innerH);
-            }
-
-            if (Cfg.NoteImageKeepAspect)
-            {
-                float aspect = image.height > 0 ? (float)image.width / image.height : 1f;
-                float iw = r.height * aspect;
-                float ih = r.height;
-                if (iw > r.width)
-                {
-                    iw = r.width;
-                    ih = aspect > 0f ? r.width / aspect : r.height;
-                }
-                r = new Rect(r.x + (r.width - iw) * 0.5f, r.y + (r.height - ih) * 0.5f, iw, ih);
-            }
+        /// <summary>
+        /// A sprite into a rectangle, untinted: its own colours and its own alpha, with
+        /// <paramref name="alpha"/> multiplied on top of the latter (which is what fades a strike pop
+        /// or a trail ghost out).
+        /// </summary>
+        private static void DrawSprite(Rect r, Texture2D image, float alpha)
+        {
+            if (image == null || r.width <= 0f || r.height <= 0f || alpha <= 0.002f)
+                return;
 
             Color prev = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01(c.a));
+            GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01(alpha));
             GUI.DrawTexture(r, image, ScaleMode.StretchToFill, true);
+            GUI.color = prev;
+        }
+
+        /// <summary>
+        /// One horizontal slice of a sprite: the sub-rectangle <paramref name="uv"/> of the image is
+        /// stretched into <paramref name="r"/>. Slices are how a sprite is warped: each band of a
+        /// projected plate takes the piece of the image that belongs at its height, so the picture
+        /// tapers with the lane exactly like the colour block it replaces.
+        /// </summary>
+        private static void DrawSpriteSlice(Rect r, Texture2D image, Rect uv, float alpha)
+        {
+            if (image == null || r.width <= 0f || r.height <= 0f || alpha <= 0.002f
+                || uv.width <= 0f || uv.height <= 0f)
+                return;
+
+            Color prev = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01(alpha));
+            GUI.DrawTextureWithTexCoords(r, image, uv, true);
             GUI.color = prev;
         }
 
@@ -1729,9 +1760,55 @@ namespace LaneReader
         /// edges, the middle ones only the sides), which is what keeps a bordered plate from growing a
         /// horizontal line at every band boundary.
         /// </summary>
+        /// <summary>Passed as FillNotePlate's cut to mean "nothing cuts this plate".</summary>
+        private const float NoCut = float.NegativeInfinity;
+
         private static void FillNotePlate(Field field, int lane, float dNear, float dFar, float flatWidth,
-            Color c, Color edge, float refScale, bool bordered)
+            float cut, Color c, Color edge, float refScale, bool bordered)
         {
+            if (dFar <= dNear)
+                return;
+
+            Texture2D image = Cfg.NoteImageEnabled
+                ? NoteImage.Instance.Get(NoteImage.Note, Cfg.NoteImagePath)
+                : null;
+
+            // With a sprite, "keep aspect" means what it says: the sprite is fitted inside the FLAT
+            // note box first and the fitted box is what gets projected. Fitting it to the already
+            // projected plate instead would squash the picture by a different amount at every distance,
+            // because the plate is flatter the further up the lane it is.
+            float u0 = 0f;
+            float uRange = 1f;
+            if (image != null && Cfg.NoteImageKeepAspect)
+            {
+                float aspect = image.height > 0 ? (float)image.width / image.height : 1f;
+                float flatHeight = dFar - dNear;
+                float fitWidth = flatHeight * aspect;
+                float fitHeight = flatHeight;
+                if (fitWidth > flatWidth)
+                {
+                    fitWidth = flatWidth;
+                    fitHeight = aspect > 0f ? flatWidth / aspect : flatHeight;
+                }
+
+                uRange = flatWidth > 0f ? fitWidth / flatWidth : 1f;
+                u0 = (1f - uRange) * 0.5f;
+
+                float inset = (flatHeight - fitHeight) * 0.5f;
+                dFar -= inset;
+                dNear += inset;
+                if (dFar <= dNear)
+                    return;
+            }
+
+            // Where the judgement line eats into the plate: everything below it is behind the line and
+            // is not drawn. It is kept apart from dNear because the sprite still has to be mapped over
+            // the plate's REAL extent - a ghost being eaten has to disappear from the bottom up, not
+            // squeeze the whole picture into whatever is left of it.
+            float spriteNear = dNear;
+            float spriteSpan = dFar - dNear;
+            if (cut > dNear)
+                dNear = cut;
             if (dFar <= dNear)
                 return;
 
@@ -1739,11 +1816,12 @@ namespace LaneReader
             float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
             float wanderX = LaneWanderX(lane);
             float wanderY = LaneWanderY(lane);
+            float span = dFar - dNear;
 
             for (int band = 0; band < bands; band++)
             {
-                float d0 = dNear + (dFar - dNear) * band / bands;
-                float d1 = dNear + (dFar - dNear) * (band + 1) / bands;
+                float d0 = dNear + span * band / bands;
+                float d1 = dNear + span * (band + 1) / bands;
 
                 float top = field.View.JudgeY - field.View.Rise(d1) + wanderY;
                 float bottom = field.View.JudgeY - field.View.Rise(d0) + wanderY;
@@ -1755,6 +1833,19 @@ namespace LaneReader
                 float width = Mathf.Max(1f, flatWidth * p);
                 float centre = field.Centre(lane, p) + wanderX;
                 Rect r = new Rect(centre - width * 0.5f, top, width, height + 0.5f);
+
+                if (image != null)
+                {
+                    // The piece of the picture that belongs at this band's height. (Texture v runs
+                    // downwards from the top, the plate's d runs upwards from the near edge, hence the
+                    // flip.)
+                    float v0 = 1f - (d1 - spriteNear) / spriteSpan;
+                    float v1 = 1f - (d0 - spriteNear) / spriteSpan;
+                    Rect sprite = new Rect(
+                        centre - width * 0.5f + width * u0, r.y, width * uRange, r.height);
+                    DrawSpriteSlice(sprite, image, new Rect(0f, v0, 1f, v1 - v0), c.a);
+                    continue;
+                }
 
                 bool border = bordered && Cfg.ShowNoteBorder && r.width > b * 2f && r.height > b * 2f;
                 if (!border)
@@ -1865,19 +1956,28 @@ namespace LaneReader
         /// arrives.
         ///
         /// It is banded, so under 3D it tapers with the lane it sits in; the width is a fraction of
-        /// the lane's width, so it stays proportional when the perspective narrows the note.
+        /// the lane's width, so it stays proportional when the perspective narrows the note. A custom
+        /// hold sprite, when one is set, is stretched along the bar and takes each band's slice of
+        /// itself - the bar is then the picture, drawn as authored, with neither the hold colour nor
+        /// its opacity applied (the width fraction still is).
         /// </summary>
         private static void DrawHoldBar(Field field, int lane, float headTop, float tailTop)
         {
-            if (headTop < 0f)
-                headTop = 0f;                       // below the line: eaten by it
-
+            // The bar's real length, and the part of it that is on screen: the judgement line eats
+            // everything below itself. Keeping the two apart matters for a custom sprite - it is mapped
+            // over the bar's real extent, so an eaten bar shows its far end rather than squeezing the
+            // whole picture into what is left.
             float span = tailTop - headTop;
-            if (span <= 0f)
+            float visible = headTop < 0f ? 0f : headTop;
+            if (span <= 0f || visible >= tailTop)
                 return;
 
+            Texture2D image = Cfg.HoldImageEnabled
+                ? NoteImage.Instance.Get(NoteImage.Hold, Cfg.HoldImagePath)
+                : null;
+
             Color colour = HoldBodyColour(lane);
-            if (colour.a <= 0.002f)
+            if (image == null && colour.a <= 0.002f)
                 return;
 
             float fraction = Mathf.Clamp(Cfg.HoldWidthFraction, 0.05f, 1f);
@@ -1887,8 +1987,8 @@ namespace LaneReader
             const int Bands = 24;
             for (int band = Bands - 1; band >= 0; band--)
             {
-                float d0 = headTop + span * band / Bands;
-                float d1 = headTop + span * (band + 1) / Bands;
+                float d0 = visible + (tailTop - visible) * band / Bands;
+                float d1 = visible + (tailTop - visible) * (band + 1) / Bands;
                 float rise0 = field.View.Rise(d0);
                 float rise1 = field.View.Rise(d1);
                 float height = rise1 - rise0;
@@ -1900,8 +2000,20 @@ namespace LaneReader
                 float centre = field.Centre(lane, p) + wanderX;
 
                 // The band's top edge is the farther end of it, i.e. the bigger rise.
-                Fill(new Rect(centre - width * 0.5f, field.View.JudgeY - rise1 + wanderY,
-                    width, height + 0.5f), colour);
+                Rect r = new Rect(centre - width * 0.5f, field.View.JudgeY - rise1 + wanderY,
+                    width, height + 0.5f);
+
+                if (image != null)
+                {
+                    // v runs down the picture, the bar runs up the lane: the top of the picture is the
+                    // far end of the hold, and the picture is anchored to the bar's real extent.
+                    float v0 = 1f - (d1 - headTop) / span;
+                    float v1 = 1f - (d0 - headTop) / span;
+                    DrawSpriteSlice(r, image, new Rect(0f, v0, 1f, v1 - v0), 1f);
+                    continue;
+                }
+
+                Fill(r, colour);
             }
         }
 

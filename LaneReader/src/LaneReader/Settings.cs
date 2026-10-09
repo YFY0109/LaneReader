@@ -54,6 +54,16 @@ namespace LaneReader
         /// (contained and centred), false stretches it to the box.</summary>
         public bool NoteImageKeepAspect = true;
 
+        /// <summary>
+        /// A second sprite, for the hold bar (the body between a hold's head and its tail). Set the
+        /// same way as the note's; the bar is then the picture, stretched along it. Off by default,
+        /// where the bar is the flat colour block instead.
+        /// </summary>
+        public bool HoldImageEnabled = false;
+
+        /// <summary>The hold bar's sprite. Relative paths resolve against the mod's own folder.</summary>
+        public string HoldImagePath = "hold.png";
+
         /// <summary>Clockwise rotation of the whole overlay, in degrees. The overlay turns about
         /// the middle of its judgement line, so the pivot does not move with the angle.</summary>
         public float RotationDegrees = 0f;
