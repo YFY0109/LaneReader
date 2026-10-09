@@ -58,6 +58,19 @@ namespace LaneReader
         /// the middle of its judgement line, so the pivot does not move with the angle.</summary>
         public float RotationDegrees = 0f;
 
+        /// <summary>
+        /// Fill the whole screen with one colour before the overlay draws anything, to hide whatever
+        /// the level is doing behind it. Off by default; the colour is black at 50%, which dims a
+        /// level without hiding it completely - its alpha is the opacity, so 100% is a solid
+        /// backdrop.
+        ///
+        /// It is drawn in screen space, not inside the overlay's rotation: it is there to cover the
+        /// screen, so turning the lanes must not leave corners of the level showing.
+        /// </summary>
+        public bool BackgroundEnabled = false;
+
+        public Color BackgroundColour = new Color(0f, 0f, 0f, 0.5f);
+
         /// <summary>Fall speed, in reference pixels per second at 1080p. The default is the speed
         /// this mod has settled on with its player.</summary>
         public float NoteSpeedPxPerSec = 1000f;

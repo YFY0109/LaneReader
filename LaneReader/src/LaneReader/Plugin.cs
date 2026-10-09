@@ -153,6 +153,13 @@ namespace LaneReader
                     Slider("边框粗细 (px)", ref Cfg.NoteBorderPx, 1f, 8f, "F0");
                 Toggle("显示帧数 (判定线下方)", ref Cfg.ShowFps);
 
+                Toggle("全屏纯色背景（挡住游戏画面）", ref Cfg.BackgroundEnabled);
+                if (Cfg.BackgroundEnabled)
+                {
+                    ColourRow("背景色", ref Cfg.BackgroundColour);
+                    GUILayout.Label("颜色的 A 就是透明度：默认黑色 50%，A=1 就是全不透明。");
+                }
+
                 Toggle("用自定义音符图片", ref Cfg.NoteImageEnabled);
                 if (Cfg.NoteImageEnabled)
                 {
@@ -1015,6 +1022,12 @@ namespace LaneReader
             Matrix4x4 savedMatrix = GUI.matrix;
             try
             {
+                // The full-screen backdrop, if it is on, goes down first and in screen space: it is
+                // there to hide the level, so rotating the overlay must not leave corners of the level
+                // showing. Its alpha is the opacity, and 100% is a solid wall of colour.
+                if (Cfg.BackgroundEnabled)
+                    Fill(new Rect(0f, 0f, Screen.width, Screen.height), Cfg.BackgroundColour);
+
                 // The whole overlay turns as one piece, about the middle of its judgement line, so
                 // the pivot stays put and only the angle changes. The settings panel is drawn
                 // elsewhere and is unaffected. The fun spin is added on top of the player's angle.
