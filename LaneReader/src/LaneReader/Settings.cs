@@ -90,6 +90,16 @@ namespace LaneReader
         public float JudgeLineY = 0.18f;
 
         /// <summary>
+        /// Draw the judgement line across the whole screen (the default) or only as long as the width
+        /// percentage says, centred on the playfield. A shorter line reads as part of the overlay rather
+        /// than as a strut across the level, which matters when the level's own background is visible.
+        /// </summary>
+        public bool JudgeLineFullWidth = true;
+
+        /// <summary>Its width as a percentage of the screen, 5..100, when it is not full width.</summary>
+        public float JudgeLineWidthPercent = 100f;
+
+        /// <summary>
         /// How far the lanes run from the judgement line towards the top of the screen, in
         /// reference pixels (1080p). This is a number of its own on purpose: the lanes used to be
         /// drawn all the way to the screen edge, which silently re-stretched every lane whenever

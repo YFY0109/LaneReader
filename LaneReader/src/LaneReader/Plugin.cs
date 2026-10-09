@@ -143,7 +143,6 @@ namespace LaneReader
               using (Indent())
               {
                 Toggle("轨道", ref Cfg.ShowLanes);
-                Toggle("判定线", ref Cfg.ShowJudgeLine);
                 Toggle("音符", ref Cfg.ShowNotes);
                 Toggle("键位标签 D F J K", ref Cfg.ShowKeyLabels);
                 Toggle("判定框", ref Cfg.ShowJudgeBoxes);
@@ -204,6 +203,15 @@ namespace LaneReader
                 Slider("轨道宽度 (px)", ref Cfg.LaneWidthPx, 40f, 400f, "F0");
                 Slider("轨道间距 (px)", ref Cfg.LaneGapPx, 0f, 80f, "F0");
                 Slider("判定线高度 (0~1)", ref Cfg.JudgeLineY, 0f, 1f, "F3");
+                // The on/off switch lives here, next to the height, on purpose: it used to be buried in
+                // the display section, and the player could not find it.
+                Toggle("显示判定线", ref Cfg.ShowJudgeLine);
+                if (Cfg.ShowJudgeLine)
+                {
+                    Toggle("判定线横跨全屏", ref Cfg.JudgeLineFullWidth);
+                    if (!Cfg.JudgeLineFullWidth)
+                        Slider("判定线长度 (% 屏宽)", ref Cfg.JudgeLineWidthPercent, 5f, 100f, "F0");
+                }
                 Slider("水平偏移 (px)", ref Cfg.OffsetXPx, -1200f, 1200f, "F0");
                 Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 3200f, "F0");
                 Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
@@ -1174,8 +1182,21 @@ namespace LaneReader
                 DrawBeatLines(field, refScale, w, x0, total, judgeY, laneTop, speed, noteH, now);
 
             // ---- judgement line -------------------------------------------------
+            // Full width by default; a shorter one is centred on the playfield rather than on the
+            // screen, so it stays with the lanes when the overlay is offset sideways.
             if (Cfg.ShowJudgeLine)
-                Fill(new Rect(0f, judgeY, w, Mathf.Max(2f, 3f * refScale)), Cfg.JudgeLineColour);
+            {
+                float lineWidth = w;
+                float lineLeft = 0f;
+                if (!Cfg.JudgeLineFullWidth)
+                {
+                    lineWidth = w * Mathf.Clamp(Cfg.JudgeLineWidthPercent, 1f, 100f) * 0.01f;
+                    lineLeft = cx - lineWidth * 0.5f;
+                }
+
+                Fill(new Rect(lineLeft, judgeY, lineWidth, Mathf.Max(2f, 3f * refScale)),
+                    Cfg.JudgeLineColour);
+            }
 
             // ---- key labels -----------------------------------------------------
             // Never change GUI.skin.font here: the panel text has to stay on the game's own font.
