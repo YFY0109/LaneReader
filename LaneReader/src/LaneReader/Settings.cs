@@ -89,14 +89,6 @@ namespace LaneReader
         public float LaneGapPx = 8f;
         public float JudgeLineY = 0.18f;
 
-        /// <summary>
-        /// How far the lanes run from the judgement line towards the top of the screen, in
-        /// reference pixels (1080p). This is a number of its own on purpose: the lanes used to be
-        /// drawn all the way to the screen edge, which silently re-stretched every lane whenever
-        /// the judgement line height, the vertical offset or the rotation changed. 0 keeps that old
-        /// behaviour (lanes to the screen edge); any positive value pins the length, so moving the
-        /// line moves the lanes with it instead of changing how long they are.
-        /// </summary>
         public float LaneLengthPx = 900f;
 
         /// <summary>Horizontal shift of the whole overlay, in reference pixels (1080p).</summary>
@@ -288,12 +280,16 @@ namespace LaneReader
         public float SmoothStrength = 0.45f;
 
         /// <summary>
-        /// Experimental hold support. The overlay reads scrFloor.holdLength, draws the hold's body as
-        /// a bar from the head to the release, and (for the hand-split planner) feeds the release as
-        /// an extra key that is forced onto the head's lane. Off by default: the bar is unverified
-        /// against a chart that actually has holds on this install.
+        /// Hold support: the overlay reads scrFloor.holdLength, draws the hold's body as a bar running
+        /// from the head to the next tile, keeps that bar on screen (and lets the judgement line eat it)
+        /// after the head is struck, and holds the head's strike feedback up until the tail arrives. The
+        /// hand-split planner also feeds each release as an extra key, forced onto the head's lane.
+        ///
+        /// On by default. A chart without holds is completely unaffected - nothing reads holdLength
+        /// except this pass, and it finds nothing to do - so there is no reason to make a hold chart
+        /// opt in to being read correctly.
         /// </summary>
-        public bool HoldSupport = false;
+        public bool HoldSupport = true;
 
         public float TimeOffsetSeconds = 0f;
 
