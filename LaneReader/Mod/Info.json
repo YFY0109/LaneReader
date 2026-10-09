@@ -4,5 +4,6 @@
   "Author": "fallingCB",
   "Version": "0.3.0",
   "AssemblyName": "LaneReader.dll",
-  "EntryMethod": "LaneReader.Plugin.Load"
+  "EntryMethod": "LaneReader.Plugin.Load",
+  "HomePage": "https://github.com/fallingCB/LaneReader"
 }

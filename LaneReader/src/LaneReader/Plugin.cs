@@ -34,6 +34,13 @@ namespace LaneReader
         /// <summary>The mod's own folder, so a relative note-image path can be resolved against it.</summary>
         internal static string ModPath;
 
+        /// <summary>
+        /// Where the mod lives. UnityModManager reads the same string out of Info.json's HomePage and
+        /// draws a link button for it in its mod list; the settings panel has a button of its own so the
+        /// link is reachable from inside the mod as well.
+        /// </summary>
+        internal const string HomePage = "https://github.com/fallingCB/LaneReader";
+
         private static readonly ChartReader Chart = new ChartReader();
         private static FingeringPlanner.Result _plan;
         private static double _planFingerprint = double.NaN;
@@ -478,6 +485,18 @@ namespace LaneReader
                 if (GUILayout.Button("切换键: " + Cfg.Key, GUILayout.Width(200f)))
                     Cfg.ToggleKey = NextKey(Cfg.ToggleKey);
                 Toggle("输出诊断日志", ref Cfg.DebugLog);
+
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("打开 GitHub 页面", GUILayout.Width(160f)))
+                {
+                    // The same address UMM itself shows a link button for, taken from Info.json's
+                    // HomePage; kept here too, so the link is reachable from the mod's own panel (and
+                    // from a UMM old enough not to draw that button).
+                    try { Application.OpenURL(HomePage); }
+                    catch (Exception ex) { Logger.Log("OpenURL failed: " + ex.Message); }
+                }
+                GUILayout.Label(HomePage);
+                GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button("恢复默认", GUILayout.Width(110f)))
