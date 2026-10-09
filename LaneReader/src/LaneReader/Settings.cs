@@ -46,9 +46,9 @@ namespace LaneReader
         /// "note.png" means Mods/LaneReader/note.png.</summary>
         public string NoteImagePath = "note.png";
 
-        /// <summary>Paint the sprite in the hand's colour instead of its own. Off by default:
-        /// an image is usually already the colour its author wanted.</summary>
-        public bool NoteImageTint = false;
+        // The sprite is drawn exactly as authored: there was a "tint it with the lane colour"
+        // switch here, and it was removed on request - a note image already carries the colours
+        // its author wanted, and tinting it turned every one of them into the same hue.
 
         /// <summary>How the sprite is fitted to the note's box: true keeps its aspect ratio
         /// (contained and centred), false stretches it to the box.</summary>

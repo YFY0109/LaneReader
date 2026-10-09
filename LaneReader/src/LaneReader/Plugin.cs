@@ -162,9 +162,10 @@ namespace LaneReader
                     GUILayout.EndHorizontal();
                     GUILayout.Label("相对路径基于 mod 目录，例: note.png = " + ModPath + "\\note.png");
                     Toggle("保持宽高比", ref Cfg.NoteImageKeepAspect);
-                    Toggle("用轨道的颜色着色", ref Cfg.NoteImageTint);
                     NoteImage.Get(Cfg.NoteImagePath);            // refreshes the status line in place
                     GUILayout.Label("状态: " + NoteImage.Status);
+                    GUILayout.Label("图片按原样画（不再着色）：没画到的地方就是透明的。");
+                    GUILayout.Label("打开「音符边框」时，边框只画在图片外面的一圈，不会垫在图片底下。");
                 }
             }
 
@@ -1265,9 +1266,12 @@ namespace LaneReader
         /// (per lane, when the lane colours are separate) and it fades with the note, so a strike
         /// pop does not leave a hard-edged rectangle behind.
         ///
-        /// With a custom image the outline is drawn the same way and the sprite replaces the inner
-        /// block, contained in it. The image carries its own alpha; the note's alpha (which is what
-        /// makes a struck note fade out) is multiplied on top of it through GUI.color.
+        /// With a custom sprite the outline is a RING drawn around the sprite rather than a filled
+        /// rectangle behind it. That distinction is the whole point: a backing rectangle shows
+        /// through every transparent pixel of the sprite, which turns them into the outline colour
+        /// (visibly white with the default border colour) instead of leaving them transparent.
+        /// The sprite is drawn with its own colours - only the note's alpha, which is what makes a
+        /// struck note fade out, is applied on top of it.
         /// </summary>
         private static void FillNote(Rect r, Color c, Color edge, float refScale)
         {
@@ -1291,8 +1295,15 @@ namespace LaneReader
 
             if (border)
             {
-                Fill(r, edge);
-                r = new Rect(r.x + b, r.y + b, r.width - 2f * b, r.height - 2f * b);
+                float innerW = r.width - 2f * b;
+                float innerH = r.height - 2f * b;
+
+                Fill(new Rect(r.x, r.y, r.width, b), edge);                     // top
+                Fill(new Rect(r.x, r.y + r.height - b, r.width, b), edge);      // bottom
+                Fill(new Rect(r.x, r.y + b, b, innerH), edge);                  // left
+                Fill(new Rect(r.x + r.width - b, r.y + b, b, innerH), edge);    // right
+
+                r = new Rect(r.x + b, r.y + b, innerW, innerH);
             }
 
             if (Cfg.NoteImageKeepAspect)
@@ -1309,7 +1320,7 @@ namespace LaneReader
             }
 
             Color prev = GUI.color;
-            GUI.color = Cfg.NoteImageTint ? c : new Color(1f, 1f, 1f, c.a);
+            GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01(c.a));
             GUI.DrawTexture(r, image, ScaleMode.StretchToFill, true);
             GUI.color = prev;
         }
