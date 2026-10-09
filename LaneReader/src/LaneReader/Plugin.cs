@@ -209,6 +209,8 @@ namespace LaneReader
                 Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
                 Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
                 GUILayout.Label("轨道长度同时是可见区域的上边界：音符和小节线都从那里开始出现。");
+                GUILayout.Label("默认 1620 = 1.5 屏，上边界在屏幕外，所以音符是从屏幕顶上滑进来的；");
+                GUILayout.Label("调小它就会看到音符在轨道顶端凭空出现。");
               }
             }
 

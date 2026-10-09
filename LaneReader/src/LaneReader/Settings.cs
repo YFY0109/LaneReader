@@ -89,7 +89,21 @@ namespace LaneReader
         public float LaneGapPx = 8f;
         public float JudgeLineY = 0.18f;
 
-        public float LaneLengthPx = 900f;
+        /// <summary>
+        /// How far the lanes run from the judgement line towards the top of the screen, in
+        /// reference pixels (1080p). This is a number of its own on purpose: the lanes used to be
+        /// drawn all the way to the screen edge, which silently re-stretched every lane whenever
+        /// the judgement line height, the vertical offset or the rotation changed. 0 keeps that old
+        /// behaviour (lanes to the screen edge); any positive value pins the length, so moving the
+        /// line moves the lanes with it instead of changing how long they are.
+        ///
+        /// It is also the top of the visible playfield: notes and beat lines come into being there
+        /// rather than at the screen edge. The default is one and a half screens, i.e. longer than the
+        /// screen itself - on purpose. The playfield is then bounded by the screen rather than by the
+        /// setting (nothing ever pops into existence in view), and under 3D the vanishing point sits
+        /// just off the top of the screen, which keeps the taper gentle enough to read.
+        /// </summary>
+        public float LaneLengthPx = 1620f;
 
         /// <summary>Horizontal shift of the whole overlay, in reference pixels (1080p).</summary>
         public float OffsetXPx = 0f;
