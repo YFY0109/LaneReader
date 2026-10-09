@@ -225,6 +225,14 @@ namespace LaneReader
         public float FunSpinSpeed = 30f;
 
         /// <summary>
+        /// Fun: the four lanes point in four mutually perpendicular directions instead of all
+        /// pointing up. Each lane is drawn as one lane in the middle of the overlay and then rotated
+        /// 90 degrees further than the last, about a root on the edge of a small square - so the four
+        /// of them read as petals around that square.
+        /// </summary>
+        public bool FunPetals = false;
+
+        /// <summary>
         /// Experimental: draw a motion-blur trail behind every falling note.
         ///
         /// The note positions are exact (they come straight from the song clock), but they are only

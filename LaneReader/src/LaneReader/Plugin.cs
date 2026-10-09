@@ -385,6 +385,13 @@ namespace LaneReader
                         Slider("旋转速度 (度/秒)", ref Cfg.FunSpinSpeed, 5f, 180f, "F0");
                         GUILayout.Label("整个叠加层绕判定线中点转，叠加在「整体旋转」的角度上；关掉就回到你设的角度。");
                     }
+
+                    Toggle("四花瓣（四条轨道互相垂直）", ref Cfg.FunPetals);
+                    if (Cfg.FunPetals)
+                    {
+                        GUILayout.Label("每条轨道画在正中间再各自转 90 度，绕的是中心小方块一条边的中点，");
+                        GUILayout.Label("所以四条轨道朝四个互相垂直的方向伸出去（方块边长 = 轨道宽 + 间距）。");
+                    }
                 }
             }
 
@@ -1008,12 +1015,18 @@ namespace LaneReader
                 {
                     for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                     {
-                        float x = x0 + i * (laneW + laneGap) + LaneWanderX(i);
+                        Matrix4x4 laneMatrix = GUI.matrix;
+                        if (Cfg.FunPetals)
+                            GUIUtility.RotateAroundPivot(i * 90f,
+                                PetalRoot(i, cx, judgeY, laneW + laneGap));
+
+                        float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
                         float y = laneTop + LaneWanderY(i);
                         Fill(new Rect(x, y, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
                         Color edge = LaneEdgeColour(i);
                         Fill(new Rect(x, y, 2f, laneLen), edge);
                         Fill(new Rect(x + laneW - 2f, y, 2f, laneLen), edge);
+                        GUI.matrix = laneMatrix;
                     }
                 }
             }
@@ -1041,10 +1054,16 @@ namespace LaneReader
                 label.normal.textColor = Cfg.LabelColour;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
-                    float x = x0 + i * (laneW + laneGap) + LaneWanderX(i);
+                    Matrix4x4 laneMatrix = GUI.matrix;
+                    if (Cfg.FunPetals)
+                        GUIUtility.RotateAroundPivot(i * 90f,
+                            PetalRoot(i, cx, judgeY, laneW + laneGap));
+
+                    float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
                     float y = judgeY + 6f * refScale + LaneWanderY(i);
                     GUI.Label(new Rect(x, y, laneW, 26f * refScale),
                         FingeringPlanner.KeyName(i), label);
+                    GUI.matrix = laneMatrix;
                 }
             }
 
@@ -1058,12 +1077,18 @@ namespace LaneReader
                 Color box = Cfg.JudgeBoxColour;
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
-                    float x = x0 + i * (laneW + laneGap) + LaneWanderX(i);
+                    Matrix4x4 laneMatrix = GUI.matrix;
+                    if (Cfg.FunPetals)
+                        GUIUtility.RotateAroundPivot(i * 90f,
+                            PetalRoot(i, cx, judgeY, laneW + laneGap));
+
+                    float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
                     float top = judgeY - noteH * 0.5f + LaneWanderY(i);
                     Fill(new Rect(x, top, laneW, t), box);                       // top edge
                     Fill(new Rect(x, top + noteH - t, laneW, t), box);           // bottom edge
                     Fill(new Rect(x, top, t, noteH), box);                       // left edge
                     Fill(new Rect(x + laneW - t, top, t, noteH), box);           // right edge
+                    GUI.matrix = laneMatrix;
                 }
             }
 
@@ -1091,32 +1116,46 @@ namespace LaneReader
             IList<Note> notes = Chart.Notes;
 
             // ---- notes ----------------------------------------------------------
-            for (int i = 0; i < count; i++)
+            // In petal mode the notes are drawn once per lane, inside that lane's rotation, so each
+            // petal's notes fall outward along their own petal. Otherwise this is one pass over them
+            // all. The single-pass case is byte-for-byte what it always was.
+            int passes = Cfg.FunPetals ? FingeringPlanner.FingerCount : 1;
+            for (int pass = 0; pass < passes; pass++)
             {
-                Note note = notes[i];
+                Matrix4x4 laneMatrix = GUI.matrix;
+                if (Cfg.FunPetals)
+                    GUIUtility.RotateAroundPivot(pass * 90f,
+                        PetalRoot(pass, cx, judgeY, laneW + laneGap));
 
-                // Skip what the game has not generated, and what it has already played.
-                if (!Chart.ShouldDraw(i))
-                    continue;
+                for (int i = 0; i < count; i++)
+                {
+                    Note note = notes[i];
 
-                // Bottom edge of the judgement box. Both the falling note and the strike pop are
-                // positioned against it, so the note arrives exactly where the pop starts - any
-                // other reference makes it look like the note snaps backwards on contact.
-                float boxBottom = judgeY + noteH * 0.5f;
+                    if (Cfg.FunPetals && note.Lane != pass)
+                        continue;
 
-                // Falling note: its bottom edge travels down to the box bottom.
-                float y = boxBottom - noteH - (float)((note.HitTime - now) * speed);
+                    // Skip what the game has not generated, and what it has already played.
+                    if (!Chart.ShouldDraw(i))
+                        continue;
 
-                // The note comes into being at the top of the lane, not at the screen edge: with a
-                // pinned lane length the lane top is above the screen's, so a note simply appears
-                // fully formed there (the same thing the lane bodies do). y only grows towards the
-                // line, so once a note is fully below the top it stays drawn.
-                if (y < laneTop || y > boxBottom + noteH * 2f)
-                    continue;
+                    // Bottom edge of the judgement box. Both the falling note and the strike pop are
+                    // positioned against it, so the note arrives exactly where the pop starts - any
+                    // other reference makes it look like the note snaps backwards on contact.
+                    float boxBottom = judgeY + noteH * 0.5f;
 
-                float x = x0 + note.Lane * (laneW + laneGap);
-                Color c = NoteBodyColour(note.Lane);
-                Color edge = NoteEdgeColour(note.Lane);
+                    // Falling note: its bottom edge travels down to the box bottom.
+                    float y = boxBottom - noteH - (float)((note.HitTime - now) * speed);
+
+                    // The note comes into being at the top of the lane, not at the screen edge: with a
+                    // pinned lane length the lane top is above the screen's, so a note simply appears
+                    // fully formed there (the same thing the lane bodies do). y only grows towards the
+                    // line, so once a note is fully below the top it stays drawn.
+                    if (y < laneTop || y > boxBottom + noteH * 2f)
+                        continue;
+
+                    float x = LaneX(note.Lane, x0, laneW, laneGap, cx);
+                    Color c = NoteBodyColour(note.Lane);
+                    Color edge = NoteEdgeColour(note.Lane);
 
                 // ---- strike pop ----------------------------------------------------
                 // Reaching the line pins the note there. It then swells and shrinks, but its
@@ -1185,6 +1224,10 @@ namespace LaneReader
                     if (Cfg.HoldSupport && note.HoldSeconds > 0.0)
                         DrawHoldBar(body, note.Lane, (float)(note.HoldSeconds * speed), depth);
                 }
+                }
+
+                if (Cfg.FunPetals)
+                    GUI.matrix = laneMatrix;
             }
 
             _lastTrailTime = now;
@@ -1271,6 +1314,31 @@ namespace LaneReader
             GUI.color = prev;
         }
 
+        /// <summary>
+        /// The local x a lane is drawn at, before any petal rotation. Normally that is its own slot on
+        /// the judgement line; in petal mode every lane is drawn at the middle of the overlay and then
+        /// rotated outwards, so they all share the same local x.
+        /// </summary>
+        private static float LaneX(int lane, float x0, float laneW, float laneGap, float cx)
+        {
+            if (Cfg.FunPetals)
+                return cx - laneW * 0.5f;
+            return x0 + lane * (laneW + laneGap);
+        }
+
+        /// <summary>The point a petal rotates about: the middle of one edge of the centre square.</summary>
+        private static Vector2 PetalRoot(int lane, float cx, float judgeY, float side)
+        {
+            float half = side * 0.5f;
+            switch (((lane % 4) + 4) % 4)
+            {
+                case 0: return new Vector2(cx, judgeY - half);        // up
+                case 1: return new Vector2(cx + half, judgeY);        // right
+                case 2: return new Vector2(cx, judgeY + half);        // down
+                default: return new Vector2(cx - half, judgeY);       // left
+            }
+        }
+
         // ---- experimental fun ------------------------------------------------
 
         /// <summary>
@@ -1320,7 +1388,7 @@ namespace LaneReader
         /// <summary>Where lane <paramref name="lane"/>'s centre sits at the given perspective scale.</summary>
         private static float LaneCentre(float lane, float x0, float laneW, float laneGap, float cx, float p)
         {
-            float centre = x0 + lane * (laneW + laneGap) + laneW * 0.5f;
+            float centre = LaneX((int)lane, x0, laneW, laneGap, cx) + laneW * 0.5f;
             return cx + (centre - cx) * p;
         }
 
@@ -1349,6 +1417,11 @@ namespace LaneReader
                 float edge = Mathf.Max(1f, 2f * p);
                 for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                 {
+                    Matrix4x4 laneMatrix = GUI.matrix;
+                    if (Cfg.FunPetals)
+                        GUIUtility.RotateAroundPivot(i * 90f,
+                            PetalRoot(i, cx, judgeY, laneW + laneGap));
+
                     float centre = LaneCentre(i, x0, laneW, laneGap, cx, p) + LaneWanderX(i);
                     float top = y + LaneWanderY(i);
                     float left = centre - width * 0.5f;
@@ -1356,6 +1429,7 @@ namespace LaneReader
                     Color line = LaneEdgeColour(i);
                     Fill(new Rect(left, top, edge, step + 0.5f), line);
                     Fill(new Rect(left + width - edge, top, edge, step + 0.5f), line);
+                    GUI.matrix = laneMatrix;
                 }
             }
         }
