@@ -814,10 +814,13 @@ namespace LaneReader
                     NotesVisible(frame)));
             }
 
-            // Re-plan only when a fingering input actually changed, not every frame.
+            // Re-plan only when a fingering input actually changed, not every frame. HoldSupport is
+            // part of the fingerprint because it decides whether the releases are fed in at all: a
+            // toggle that changes the plan but not the fingerprint would leave the old lanes in place.
             double fingerprint = Chart.Generation * 1000000.0 + Cfg.RollWindowMs * 100.0
                                  + Cfg.FingeringMode * 100000000.0 + Cfg.MaxHardResistBpm
-                                 + (Cfg.OuterRoll ? 1.0 : 2.0);
+                                 + (Cfg.OuterRoll ? 1.0 : 2.0)
+                                 + (Cfg.HoldSupport ? 4.0 : 8.0);
             if (fingerprint == _planFingerprint)
                 return;
 
@@ -1320,6 +1323,19 @@ namespace LaneReader
                     float bodyY = centreY - bodyH * 0.5f + LaneWanderY(note.Lane);
                     Rect body = new Rect(bodyCentre - bodyW * 0.5f, bodyY, bodyW, bodyH);
 
+                    // A hold's body first, so it sits BEHIND the head and behind the trail. It used to
+                    // be drawn last, which hid the trail: the bar rises from the head's top edge, and
+                    // every ghost the trail draws is up there too, so the bar simply painted over the
+                    // whole trail (a hold note looked like it had no trail at all, while every other
+                    // note did).
+                    //
+                    // The bar runs from the head's top edge to the next note's top edge - see
+                    // ChartReader, where HoldSeconds is the whole gap to the next tile - so its far end
+                    // lands exactly on that note at every moment.
+                    if (Cfg.HoldSupport && note.HoldSeconds > 0.0)
+                        DrawHoldBar(field, note.Lane, fall + noteH * 0.5f,
+                            fall + noteH * 0.5f + (float)(note.HoldSeconds * speed));
+
                     // The trail only makes sense while the clock is moving: it is the distance the
                     // clock advanced since the previous frame, so a frozen clock (pause, death
                     // screen) produces none rather than a smear of a note that is standing still.
@@ -1331,14 +1347,6 @@ namespace LaneReader
                     }
 
                     FillNote(body, c, edge, refScale);
-
-                    // A hold's body: a bar running from the head up to the release, which is the next
-                    // tile's own arrival time - see ChartReader, where HoldSeconds is the whole gap to
-                    // the next note. Its far end therefore lands exactly on that note, at every
-                    // moment, and the bar spans the whole reach of the hold.
-                    if (Cfg.HoldSupport && note.HoldSeconds > 0.0)
-                        DrawHoldBar(field, note.Lane, fall + noteH * 0.5f,
-                            fall + noteH * 0.5f + (float)(note.HoldSeconds * speed));
                 }
                 }
 

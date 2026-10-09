@@ -43,12 +43,20 @@ namespace LaneReader
         public double Beats;
 
         /// <summary>
-        /// How long this tile is held, in seconds, when it is a hold tile (0 on every ordinary
-        /// tile). Derived from holdLength plus the gap to the next tile; see Build().
+        /// How long this tile is held, in seconds. -1 on every ordinary tile; 0 or more on a hold.
+        /// It is the WHOLE gap to the next tile, because that is what the game's own hold mesh spans
+        /// (scrHoldRenderer.tailFloor = startFloor.nextfloor) - the key is down until the next tile
+        /// arrives, so the bar has to reach it. See Build().
         /// </summary>
         public double HoldSeconds;
 
-        /// <summary>holdLength as the game reports it: the hold's length in beats, 0 on ordinary tiles.</summary>
+        /// <summary>
+        /// scrFloor.holdLength as the game reports it: the hold's length in beats of extra
+        /// rotation, or -1 for a tile that is not a hold at all. A hold event with duration n puts
+        /// n * 2 beats on top of the tile's own length (scrLevelMaker.CalculateFloorEntryTimes adds
+        /// holdLength * 2 * timeBetweenAngles), which is why this is the game's own value rather
+        /// than anything derived here.
+        /// </summary>
         public double HoldBeats;
     }
 
@@ -865,14 +873,17 @@ namespace LaneReader
                 double entryAngle = _floorEntryAngle != null ? ToDouble(_floorEntryAngle.GetValue(f)) : 0.0;
                 note.Direction = entryAngle == 0.0 ? 1 : 0;
 
-                // Holds: holdLength on the tile is the hold's length in BEATS. It is zero on ordinary
-                // tiles, so charts without holds are untouched. The seconds come later, once the
-                // tile's own length in beats is known - see the pass after ComputeBeats.
+                // Holds. scrFloor.holdLength is the game's own hold flag: -1 means "not a hold",
+                // 0 or more is a hold of that many extra beats (a Hold event with duration n puts n
+                // on this field, and n * 2 beats on the tile). The seconds come later, once the gap
+                // to the next tile is known - see the pass after ComputeBeats. Ordinary tiles keep
+                // the -1 the struct starts with.
+                note.HoldBeats = -1.0;
                 if (_floorHoldLength != null)
                 {
-                    double holdBeats = ToDouble(_floorHoldLength.GetValue(f));
-                    if (holdBeats > 1e-6)
-                        note.HoldBeats = holdBeats;
+                    double holdLength = ToDouble(_floorHoldLength.GetValue(f));
+                    if (holdLength >= 0.0)
+                        note.HoldBeats = holdLength * 2.0;
                 }
 
                 _notes.Add(note);
@@ -925,31 +936,37 @@ namespace LaneReader
             _tileBpmKnown = 0;
             ComputeBeats(log);
 
-            // Holds, now that each tile's own length in beats is known.
+            // Holds, now that the gap to the next tile is known.
             //
-            // holdLength is in beats, and the gap to the next tile covers the hold PLUS the travel
-            // into that tile. So the beat is gap / (hold + travel) and the hold itself is that times
-            // holdLength - using the whole gap would overstate every hold by one tile of travel.
-            // (The reference macro cannot help here: it never reads holdLength at all, and builds its
-            // timeline from turn angles, so a hold chart would not even play in time in it.)
+            // The hold lasts the WHOLE gap. This is not a guess: scrHoldRenderer.Start/CreateMesh set
+            // tailFloor = startFloor.nextfloor and build the hold's mesh from the held tile to that
+            // next floor, so in the game the hold's body runs from the head all the way to the next
+            // tile - the key is down until that tile arrives. As a bar in the overlay that means its
+            // far end lands exactly on the next note at every moment, which is both what the player
+            // reads and what the game draws.
+            //
+            // (The first version instead split the gap into hold + travel using holdLength, which
+            // shortened every bar by one tile of travel and left it floating short of the next note.)
+            // (The reference macro still cannot help here: it never reads holdLength at all, and
+            // builds its timeline from turn angles, so a hold chart would not even play in time in
+            // it.)
             int holds = 0;
             for (int i = 0; i + 1 < _notes.Count; i++)
             {
                 Note note = _notes[i];
-                if (note.HoldBeats <= 0.0)
+                if (note.HoldBeats < 0.0)
                     continue;
 
                 double gap = _notes[i + 1].HitTime - note.HitTime;
-                double total = note.HoldBeats + Math.Max(0.0, note.Beats);
-                if (gap <= 0.0 || total <= 0.0)
+                if (gap <= 0.0)
                     continue;
 
-                note.HoldSeconds = gap * note.HoldBeats / total;
+                note.HoldSeconds = gap;
                 _notes[i] = note;
                 holds++;
             }
             if (holds > 0)
-                Plugin.Log("chart holds: " + holds + " tiles holdLength > 0");
+                Plugin.Log("chart holds: " + holds + " tiles with holdLength >= 0");
 
             if (log)
                 Plugin.Log(_diagnostic);
