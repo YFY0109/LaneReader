@@ -41,6 +41,15 @@ namespace LaneReader
         /// exactly one beat, while a 300-degree tile lasts 1.667 beats.
         /// </summary>
         public double Beats;
+
+        /// <summary>
+        /// How long this tile is held, in seconds, when it is a hold tile (0 on every ordinary
+        /// tile). Derived from holdLength plus the gap to the next tile; see Build().
+        /// </summary>
+        public double HoldSeconds;
+
+        /// <summary>holdLength as the game reports it: the hold's length in beats, 0 on ordinary tiles.</summary>
+        public double HoldBeats;
     }
 
     /// <summary>One beat line: when it crosses the judgement line, and which beat it is.</summary>
@@ -95,6 +104,7 @@ namespace LaneReader
         private FieldInfo _floorGrade;
         private FieldInfo _floorMidSpin;
         private FieldInfo _floorIsFake;
+        private FieldInfo _floorHoldLength;
         private PropertyInfo _conductorInstance;
         private PropertyInfo _conductorSongPosProp;
         private FieldInfo _conductorSongPosField;
@@ -285,6 +295,9 @@ namespace LaneReader
                 // in the middle of every stream.
                 _floorMidSpin = floor.GetField("midSpin", Any);
                 _floorIsFake = floor.GetField("isFake", Any);
+                // Holds: scrFloor.holdLength is the length of the hold in beats. It is zero on every
+                // ordinary tile, so a chart without holds is completely unaffected.
+                _floorHoldLength = floor.GetField("holdLength", Any);
 
                 _conductorInstance = cond.GetProperty("instance", Any);
                 _conductorSongPosProp = cond.GetProperty("songposition_minusi", Any);
@@ -852,6 +865,16 @@ namespace LaneReader
                 double entryAngle = _floorEntryAngle != null ? ToDouble(_floorEntryAngle.GetValue(f)) : 0.0;
                 note.Direction = entryAngle == 0.0 ? 1 : 0;
 
+                // Holds: holdLength on the tile is the hold's length in BEATS. It is zero on ordinary
+                // tiles, so charts without holds are untouched. The seconds come later, once the
+                // tile's own length in beats is known - see the pass after ComputeBeats.
+                if (_floorHoldLength != null)
+                {
+                    double holdBeats = ToDouble(_floorHoldLength.GetValue(f));
+                    if (holdBeats > 1e-6)
+                        note.HoldBeats = holdBeats;
+                }
+
                 _notes.Add(note);
             }
 
@@ -901,6 +924,32 @@ namespace LaneReader
             _tileBpm = new double[_notes.Count];
             _tileBpmKnown = 0;
             ComputeBeats(log);
+
+            // Holds, now that each tile's own length in beats is known.
+            //
+            // holdLength is in beats, and the gap to the next tile covers the hold PLUS the travel
+            // into that tile. So the beat is gap / (hold + travel) and the hold itself is that times
+            // holdLength - using the whole gap would overstate every hold by one tile of travel.
+            // (The reference macro cannot help here: it never reads holdLength at all, and builds its
+            // timeline from turn angles, so a hold chart would not even play in time in it.)
+            int holds = 0;
+            for (int i = 0; i + 1 < _notes.Count; i++)
+            {
+                Note note = _notes[i];
+                if (note.HoldBeats <= 0.0)
+                    continue;
+
+                double gap = _notes[i + 1].HitTime - note.HitTime;
+                double total = note.HoldBeats + Math.Max(0.0, note.Beats);
+                if (gap <= 0.0 || total <= 0.0)
+                    continue;
+
+                note.HoldSeconds = gap * note.HoldBeats / total;
+                _notes[i] = note;
+                holds++;
+            }
+            if (holds > 0)
+                Plugin.Log("chart holds: " + holds + " tiles holdLength > 0");
 
             if (log)
                 Plugin.Log(_diagnostic);

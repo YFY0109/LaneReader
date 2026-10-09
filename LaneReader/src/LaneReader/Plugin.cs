@@ -64,6 +64,7 @@ namespace LaneReader
         private static bool _showColourNote = true;
         private static bool _showColourJudge = false;
         private static bool _showColourBeat = false;
+        private static bool _showColourHold = false;
         private static bool _showFingering = true;
         private static bool _showBeat = true;
         private static bool _showAlign = false;
@@ -264,6 +265,22 @@ namespace LaneReader
                     Slider("线总透明度", ref Cfg.BeatLineAlpha, 0f, 1f, "F3");
                     GUILayout.Label("粗线另外再乘 1.8，所以它比细线显眼；把粗线颜色 A 调低就能拉平。");
                 }
+
+                if (Section("长按（hold）", ref _showColourHold))
+                {
+                    GUILayout.Label("长按的中间那段线条。要和普通音符一样单独配色就打开下面的开关。");
+                    ColourToggle("长按线条", ref Cfg.HoldSeparate);
+                    if (Cfg.HoldSeparate)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            ColourRow("轨道 " + (i + 1) + " 长按", ref Cfg.HoldColours[i]);
+                    }
+                    else
+                    {
+                        ColourRow("长按线条色", ref Cfg.HoldColour);
+                    }
+                    Slider("线条粗细（轨道宽的比例）", ref Cfg.HoldWidthFraction, 0.05f, 1f, "F2");
+                }
             }
 
             // ---- 小节线 --------------------------------------------------------
@@ -328,6 +345,13 @@ namespace LaneReader
                     Slider("透视强度", ref Cfg.ThreeDStrength, 0f, 3f, "F2");
                     GUILayout.Label("灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；");
                     GUILayout.Label("音符越靠近灭点越窄、越矮，判定线/判定框/标签在灭点这一端，不受影响。");
+                }
+
+                Toggle("长按（hold）支持", ref Cfg.HoldSupport);
+                if (Cfg.HoldSupport)
+                {
+                    GUILayout.Label("读 scrFloor.holdLength 画长按长条（末端正好是松手时刻）；");
+                    GUILayout.Label("拆手序还会把松手当成一颗键，强制和长按开头同轨。颜色在「外观 / 颜色 → 长按」。");
                 }
 
                 Toggle("平滑下落（重影拖尾）", ref Cfg.SmoothFalling);
@@ -700,9 +724,29 @@ namespace LaneReader
         private static void ApplyHandSplit()
         {
             IList<Note> notes = Chart.Notes;
+
+            // With hold support on, every hold contributes a second entry for its release - one beat
+            // list entry per key the player is responsible for - and that release is forced onto the
+            // head's lane. The release's time is the head's time plus the hold's own duration, so it
+            // sits inside the same timeline the planner walks; holdHead maps each entry back to the
+            // press it belongs to (-1 for an ordinary note).
             var times = new List<double>(notes.Count);
+            var holdHead = new List<int>(notes.Count);
+            var noteOfEntry = new List<int>(notes.Count);
             for (int i = 0; i < notes.Count; i++)
+            {
                 times.Add(notes[i].HitTime);
+                holdHead.Add(-1);
+                noteOfEntry.Add(i);
+
+                if (!Cfg.HoldSupport || notes[i].HoldSeconds <= 0.0)
+                    continue;
+
+                int head = times.Count - 1;
+                times.Add(notes[i].HitTime + notes[i].HoldSeconds);
+                holdHead.Add(head);
+                noteOfEntry.Add(i);
+            }
 
             // The original port's source, and deliberately so. scrLevelMaker.bpm_forUnityUseOnly is
             // not readable on this install, so this hands HandPlanner a 0 and leaves its own fallback
@@ -711,19 +755,27 @@ namespace LaneReader
             // Substituting a BPM guessed from the note spacing here silently re-scaled every chart.
             double bpm = Chart.LevelBpm();
             HandPlan plan = HandPlanner.Assign(times, bpm, Cfg.MaxHardResistBpm,
-                2, Cfg.OuterRoll);
+                2, Cfg.OuterRoll, Cfg.HoldSupport ? holdHead.ToArray() : null);
 
-            int n = Math.Min(notes.Count, plan.Lanes.Length);
-            for (int i = 0; i < n; i++)
+            // Only the presses get a lane back; a release rides along with its head and is not drawn
+            // as its own note (the hold's bar marks where it is).
+            for (int entry = 0; entry < noteOfEntry.Count && entry < plan.Lanes.Length; entry++)
             {
-                Note note = notes[i];
-                note.Lane = plan.Lanes[i];
-                notes[i] = note;
+                if (holdHead[entry] >= 0)
+                    continue;
+
+                int noteIndex = noteOfEntry[entry];
+                if (noteIndex >= notes.Count)
+                    continue;
+
+                Note note = notes[noteIndex];
+                note.Lane = plan.Lanes[entry];
+                notes[noteIndex] = note;
             }
 
             Logger.Log(string.Format(
                 "hand split: {0} notes, level bpm {1:F1}{2}, {3}, {4}, rolls {5}, taps {6} hand switches {7}",
-                n, bpm, bpm > 0.0 ? "" : " (unreadable!)", plan.Summary,
+                notes.Count, bpm, bpm > 0.0 ? "" : " (unreadable!)", plan.Summary,
                 Cfg.OuterRoll ? "outer roll" : "inner roll", plan.Rolls, plan.Taps,
                 CountHandSwitches(plan)));
         }
@@ -1091,6 +1143,12 @@ namespace LaneReader
                     }
 
                     FillNote(body, c, edge, refScale);
+
+                    // A hold's body: a bar running from the head up to the release. Its length is
+                    // the hold's duration in seconds times the fall speed, so the bar's far end
+                    // arrives at the line exactly when the release is due.
+                    if (Cfg.HoldSupport && note.HoldSeconds > 0.0)
+                        DrawHoldBar(body, note.Lane, (float)(note.HoldSeconds * speed), depth);
                 }
             }
 
@@ -1240,6 +1298,27 @@ namespace LaneReader
             }
         }
 
+        /// <summary>
+        /// The bar between a hold's head and its release, drawn upwards from the head's top edge.
+        /// <paramref name="length"/> is the hold's duration in pixels of fall (seconds x speed), so
+        /// the bar's far edge reaches the judgement line exactly at the release. Under 3D the bar
+        /// keeps the head's perspective scale rather than tapering along its length - a straight
+        /// bar in screen space reads better than a wedge, and this is an experimental view anyway.
+        /// </summary>
+        private static void DrawHoldBar(Rect head, int lane, float length, float depth)
+        {
+            if (length <= 0f)
+                return;
+
+            float fraction = Mathf.Clamp(Cfg.HoldWidthFraction, 0.05f, 1f);
+            float width = Mathf.Max(1f, head.width * fraction);
+            Color colour = HoldBodyColour(lane);
+            if (colour.a <= 0.002f)
+                return;
+
+            Fill(new Rect(head.x + (head.width - width) * 0.5f, head.y - length, width, length), colour);
+        }
+
         // ---- colours --------------------------------------------------------
 
         /// <summary>Lane body colour: the single one, or the lane's own when they are separate.</summary>
@@ -1261,6 +1340,11 @@ namespace LaneReader
         private static Color NoteEdgeColour(int lane)
         {
             return Cfg.NoteEdgeSeparate ? At(Cfg.NoteEdgeColours, lane) : Cfg.NoteEdgeColour;
+        }
+
+        private static Color HoldBodyColour(int lane)
+        {
+            return Cfg.HoldSeparate ? At(Cfg.HoldColours, lane) : Cfg.HoldColour;
         }
 
         private static Color At(Color[] colours, int lane)

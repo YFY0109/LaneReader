@@ -169,6 +169,21 @@ namespace LaneReader
         public Color LabelColour = new Color(1f, 1f, 1f, 0.75f);
         public Color FpsColour = new Color(1f, 1f, 1f, 0.7f);
 
+        /// <summary>
+        /// The bar drawn between a hold's head and its release, in the same style as the notes: a
+        /// colour (per lane when separate), a width as a fraction of the lane, and its own alpha.
+        /// </summary>
+        public Color HoldColour = new Color(1f, 1f, 1f, 0.45f);
+        public bool HoldSeparate = false;
+        public Color[] HoldColours = new Color[]
+        {
+            new Color(0.40f, 0.70f, 1.00f, 0.45f), new Color(0.40f, 0.70f, 1.00f, 0.45f),
+            new Color(1.00f, 0.62f, 0.25f, 0.45f), new Color(1.00f, 0.62f, 0.25f, 0.45f),
+        };
+
+        /// <summary>Hold bar width as a fraction of the lane width, 0.05..1.</summary>
+        public float HoldWidthFraction = 0.35f;
+
         /// <summary>Which theme button was pressed last, for the panel caption only.</summary>
         public int Theme = 0;
 
@@ -209,6 +224,14 @@ namespace LaneReader
 
         /// <summary>Opacity of the nearest trail copy, as a fraction of the note's own alpha.</summary>
         public float SmoothStrength = 0.45f;
+
+        /// <summary>
+        /// Experimental hold support. The overlay reads scrFloor.holdLength, draws the hold's body as
+        /// a bar from the head to the release, and (for the hand-split planner) feeds the release as
+        /// an extra key that is forced onto the head's lane. Off by default: the bar is unverified
+        /// against a chart that actually has holds on this install.
+        /// </summary>
+        public bool HoldSupport = false;
 
         public float TimeOffsetSeconds = 0f;
 

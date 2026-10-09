@@ -110,6 +110,24 @@ namespace LaneReader
         public static HandPlan Assign(IList<double> hitTimes, double levelBpm,
             double maxHardResistBpm, int handKeys, bool outerRoll)
         {
+            return Assign(hitTimes, levelBpm, maxHardResistBpm, handKeys, outerRoll, null);
+        }
+
+        /// <summary>
+        /// The same, with hold releases. <paramref name="holdHead"/> is indexed like
+        /// <paramref name="hitTimes"/>: -1 for an ordinary press, or the index of the press this
+        /// entry is the release of. A release is forced onto its head's lane after the whole chart
+        /// has been planned - the finger is still down, so it cannot be anywhere else.
+        ///
+        /// It is a post-pass on purpose. The release still takes part in the window that contains
+        /// it (the window's note count, and therefore the pattern and the hand rule, see it), which
+        /// is what makes a hold shift the fingering around it; only the lane it ends up on is
+        /// overridden. Because the hand rule reads window lengths rather than lanes, forcing a lane
+        /// cannot corrupt the state machine - it just wins over the pattern for that one note.
+        /// </summary>
+        public static HandPlan Assign(IList<double> hitTimes, double levelBpm,
+            double maxHardResistBpm, int handKeys, bool outerRoll, int[] holdHead)
+        {
             var plan = new HandPlan();
             if (hitTimes == null || hitTimes.Count == 0)
                 return plan;
@@ -152,8 +170,28 @@ namespace LaneReader
                 first += window;
             }
 
+            // Hold releases: the finger is still down from the head, so the release cannot be on any
+            // other lane. Applied after the whole chart, so the windows above still saw the release
+            // as a press and the fingering around the hold is what the reference's own rule makes of
+            // it.
+            int forced = 0;
+            if (holdHead != null)
+            {
+                for (int i = 0; i < count && i < holdHead.Length; i++)
+                {
+                    int head = holdHead[i];
+                    if (head < 0 || head >= i)
+                        continue;
+                    plan.Lanes[i] = plan.Lanes[head];
+                    plan.Slots[i] = plan.Slots[head];
+                    forced++;
+                }
+            }
+
             plan.Summary = string.Format("windows {0}, {1}, base {2:F2}bpm",
                 plan.WindowCount.Count, plan.Histogram(), baseBpm);
+            if (forced > 0)
+                plan.Summary += string.Format(", hold releases forced {0}", forced);
             return plan;
         }
 
