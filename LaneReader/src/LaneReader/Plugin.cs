@@ -322,6 +322,14 @@ namespace LaneReader
             // ---- 实验性 --------------------------------------------------------
             if (Section("实验性", ref _showExperimental))
             {
+                Toggle("3D 轨道（灭点在轨道顶端）", ref Cfg.ThreeDLanes);
+                if (Cfg.ThreeDLanes)
+                {
+                    Slider("透视强度", ref Cfg.ThreeDStrength, 0f, 3f, "F2");
+                    GUILayout.Label("灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；");
+                    GUILayout.Label("音符越靠近灭点越窄、越矮，判定线/判定框/标签在灭点这一端，不受影响。");
+                }
+
                 Toggle("平滑下落（重影拖尾）", ref Cfg.SmoothFalling);
                 if (Cfg.SmoothFalling)
                 {
@@ -902,16 +910,27 @@ namespace LaneReader
             float laneLen = Cfg.LaneLengthPx > 0f ? Cfg.LaneLengthPx * refScale : judgeY;
             float laneTop = judgeY - laneLen;
 
+            // The overlay's centre line: every lane's centre converges on this as it approaches the
+            // vanishing point, so it is also the x the 3D mode tapers towards.
+            float cx = w * 0.5f + Cfg.OffsetXPx * refScale;
+
             // ---- lanes ----------------------------------------------------------
             if (Cfg.ShowLanes)
             {
-                for (int i = 0; i < FingeringPlanner.FingerCount; i++)
+                if (Cfg.ThreeDLanes)
                 {
-                    float x = x0 + i * (laneW + laneGap);
-                    Fill(new Rect(x, laneTop, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
-                    Color edge = LaneEdgeColour(i);
-                    Fill(new Rect(x, laneTop, 2f, laneLen), edge);
-                    Fill(new Rect(x + laneW - 2f, laneTop, 2f, laneLen), edge);
+                    DrawLanes3D(cx, x0, laneW, laneGap, judgeY, laneTop, laneLen);
+                }
+                else
+                {
+                    for (int i = 0; i < FingeringPlanner.FingerCount; i++)
+                    {
+                        float x = x0 + i * (laneW + laneGap);
+                        Fill(new Rect(x, laneTop, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
+                        Color edge = LaneEdgeColour(i);
+                        Fill(new Rect(x, laneTop, 2f, laneLen), edge);
+                        Fill(new Rect(x + laneW - 2f, laneTop, 2f, laneLen), edge);
+                    }
                 }
             }
 
@@ -1052,7 +1071,14 @@ namespace LaneReader
 
                 if (Cfg.ShowNotes)
                 {
-                    Rect body = new Rect(x + 2f, y, laneW - 4f, noteH);
+                    // Under 3D the note keeps its bottom edge where the flat note's was - the arrival
+                    // at the line stays exact - and only its width and height shrink with distance.
+                    // With 3D off, depth is 1 and this is the plain lane-width rectangle it always was.
+                    float depth = Depth(y + noteH * 0.5f, judgeY, laneTop);
+                    float bodyW = Mathf.Max(1f, (laneW - 4f) * depth);
+                    float bodyH = Mathf.Max(1f, noteH * (0.35f + 0.65f * depth));
+                    float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, depth);
+                    Rect body = new Rect(bodyCentre - bodyW * 0.5f, y + noteH - bodyH, bodyW, bodyH);
 
                     // The trail only makes sense while the clock is moving: it is the distance the
                     // clock advanced since the previous frame, so a frozen clock (pause, death
@@ -1152,6 +1178,68 @@ namespace LaneReader
             GUI.color = prev;
         }
 
+        // ---- experimental 3D -------------------------------------------------
+
+        /// <summary>
+        /// Perspective scale at screen height <paramref name="y"/>: 1 at the judgement line, exactly
+        /// 0 at the lane top (the vanishing point), and in between
+        /// (1 - t) / (1 + strength * t) with t the fraction of the way up the lane. Outside the lane
+        /// (or with 3D off, or with no room to taper) it is 1, so every caller can use it
+        /// unconditionally.
+        /// </summary>
+        private static float Depth(float y, float judgeY, float laneTop)
+        {
+            if (!Cfg.ThreeDLanes)
+                return 1f;
+            if (laneTop >= judgeY)
+                return 1f;
+
+            float t = Mathf.Clamp01((judgeY - y) / (judgeY - laneTop));
+            return (1f - t) / (1f + Mathf.Max(0f, Cfg.ThreeDStrength) * t);
+        }
+
+        /// <summary>Where lane <paramref name="lane"/>'s centre sits at the given perspective scale.</summary>
+        private static float LaneCentre(float lane, float x0, float laneW, float laneGap, float cx, float p)
+        {
+            float centre = x0 + lane * (laneW + laneGap) + laneW * 0.5f;
+            return cx + (centre - cx) * p;
+        }
+
+        /// <summary>
+        /// The 3D lanes: instead of four rectangles, each lane is a stack of short slices whose
+        /// width and centre are re-evaluated per slice, which is what makes the four of them converge
+        /// on the single vanishing point at the lane top. Slices are one fill each (plus the two
+        /// edges), so this costs ~16x the draw calls of the flat lanes - fine for an experiment.
+        /// </summary>
+        private static void DrawLanes3D(float cx, float x0, float laneW, float laneGap,
+            float judgeY, float laneTop, float laneLen)
+        {
+            const int Slices = 16;
+            float step = laneLen / Slices;
+            if (step <= 0f)
+                return;
+
+            for (int s = 0; s < Slices; s++)
+            {
+                float y = laneTop + s * step;
+                float p = Depth(y + step * 0.5f, judgeY, laneTop);
+                float width = laneW * p;
+                if (width < 0.5f)
+                    continue;
+
+                float edge = Mathf.Max(1f, 2f * p);
+                for (int i = 0; i < FingeringPlanner.FingerCount; i++)
+                {
+                    float centre = LaneCentre(i, x0, laneW, laneGap, cx, p);
+                    float left = centre - width * 0.5f;
+                    Fill(new Rect(left, y, width, step + 0.5f), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
+                    Color line = LaneEdgeColour(i);
+                    Fill(new Rect(left, y, edge, step + 0.5f), line);
+                    Fill(new Rect(left + width - edge, y, edge, step + 0.5f), line);
+                }
+            }
+        }
+
         // ---- colours --------------------------------------------------------
 
         /// <summary>Lane body colour: the single one, or the lane's own when they are separate.</summary>
@@ -1236,7 +1324,19 @@ namespace LaneReader
                 if (y < laneTop)
                     break;
 
-                Fill(new Rect(left, y, width, thick), new Color(ink.r, ink.g, ink.b, alpha));
+                // Under 3D the line is only as wide as the lane group is at that height, unless it
+                // was asked to span the whole screen anyway.
+                float lineLeft = left;
+                float lineWidth = width;
+                float depth = Depth(y, judgeY, laneTop);
+                float cx = screenW * 0.5f + Cfg.OffsetXPx * refScale;
+                if (!Cfg.BeatLineFullWidth && depth != 1f)
+                {
+                    lineLeft = cx + (x0 - cx) * depth;
+                    lineWidth = total * depth;
+                }
+
+                Fill(new Rect(lineLeft, y, lineWidth, thick), new Color(ink.r, ink.g, ink.b, alpha));
             }
         }
 

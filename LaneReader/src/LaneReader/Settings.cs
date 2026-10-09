@@ -175,6 +175,23 @@ namespace LaneReader
         // ------------------------------------------------------------------ experimental
 
         /// <summary>
+        /// Experimental 3D lanes: the four lanes converge towards a vanishing point that sits
+        /// <see cref="LaneLengthPx"/> above the judgement line - i.e. exactly at the lane top, which
+        /// is also where notes and beat lines come into being. Lanes are drawn as slices with a
+        /// perspective scale, and a falling note's width follows the same scale, so a note shrinks as
+        /// it approaches the vanishing point.
+        ///
+        /// The scale is (1 - t) / (1 + strength * t) with t = 0 at the judgement line and t = 1 at
+        /// the lane top: 1 at the line, exactly 0 at the far end, and `strength` bends how early the
+        /// taper starts. The judgement line, the boxes and the labels are all at t = 0 and therefore
+        /// untouched.
+        /// </summary>
+        public bool ThreeDLanes = false;
+
+        /// <summary>How early the 3D taper starts: 0 is a straight cone, higher hugs the line longer.</summary>
+        public float ThreeDStrength = 1.2f;
+
+        /// <summary>
         /// Experimental: draw a motion-blur trail behind every falling note.
         ///
         /// The note positions are exact (they come straight from the song clock), but they are only
