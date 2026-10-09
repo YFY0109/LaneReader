@@ -573,8 +573,13 @@ namespace LaneReader
             if (_runStartSeqId > 0 && _notes[index].SeqId <= _runStartSeqId)
                 return false;
 
-            // Past the line the note survives only long enough to play its strike pop.
-            if (_notes[index].HitTime <= RenderTime() - StrikePopSeconds)
+            // Past the line the note survives only long enough to play its strike pop - and, if it is
+            // a hold, for the whole hold as well. A hold's bar is still travelling towards the
+            // judgement line (and being eaten by it) until the next tile arrives, and the head's
+            // strike feedback deliberately stays up for as long as the key is held, so dropping the
+            // note at the ordinary pop window would cut both of them off in the middle.
+            double survive = StrikePopSeconds + Math.Max(0.0, _notes[index].HoldSeconds);
+            if (_notes[index].HitTime <= RenderTime() - survive)
                 return false;
 
             return true;

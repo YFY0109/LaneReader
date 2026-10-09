@@ -1237,7 +1237,10 @@ namespace LaneReader
                     if (Cfg.FunPetals && note.Lane != pass)
                         continue;
 
-                    // Skip what the game has not generated, and what it has already played.
+                    // Skip what the game has not generated, and what it has already played. A hold
+                    // note outlives its own hit (see ChartReader.ShouldDraw): its bar is still
+                    // travelling towards the line, and its head keeps its strike feedback up, until
+                    // the tile after it arrives.
                     if (!Chart.ShouldDraw(i))
                         continue;
 
@@ -1254,100 +1257,145 @@ namespace LaneReader
                     float noteRise = field.View.Rise(fall);
                     float centreY = judgeY - noteRise;
                     float y = centreY - noteH * 0.5f;             // the note's flat top edge
+                    double age = now - note.HitTime;
+
+                    // A hold is not over when its head is struck. HoldSeconds is the whole gap to the
+                    // next tile (see ChartReader), so the bar's far end is that tile's own arrival:
+                    // the bar stays on screen and is eaten by the judgement line until then, and the
+                    // head's strike feedback stays up for as long as the key is held.
+                    bool holding = Cfg.HoldSupport && note.HoldSeconds > 0.0;
+                    double holdEnd = holding ? note.HoldSeconds : 0.0;
 
                     // Coming into being: flat, at the top of the lane, so a note simply appears there
                     // fully formed (the same thing the lane bodies do). Under 3D there is no such edge
                     // - the lane runs all the way to the vanishing point - so a note shrinks towards
                     // nothing as it climbs and is culled once it is too small to read. Without that
                     // every note left in the chart would be drawn as a speck around that point.
-                    if (Cfg.ThreeDLanes)
+                    //
+                    // A note that has already been struck is not culled here: what is left of it on
+                    // screen is its strike pop, its trail running out, and the rest of a hold's bar,
+                    // and each of those decides for itself whether it is still worth drawing.
+                    if (age < 0.0)
                     {
-                        if (noteH * noteScale < 1.5f)
+                        if (Cfg.ThreeDLanes)
+                        {
+                            if (noteH * noteScale < 1.5f)
+                                continue;
+                        }
+                        else if (y < laneTop || y > boxBottom + noteH * 2f)
+                        {
                             continue;
-                    }
-                    else if (y < laneTop || y > boxBottom + noteH * 2f)
-                    {
-                        continue;
+                        }
                     }
 
                     float x = LaneX(note.Lane, x0, laneW, laneGap, cx);
                     Color c = NoteBodyColour(note.Lane);
                     Color edge = NoteEdgeColour(note.Lane);
 
+                    // ---- what goes behind the note: its hold bar, then its trail ------------
+                    if (Cfg.ShowNotes)
+                    {
+                        // A hold's body, first, so it sits behind the head and behind the trail. It
+                        // used to be drawn last, which painted over the trail: the bar rises from the
+                        // head's top edge and every ghost is up there too, so a hold note looked like
+                        // it had no trail while every other note did.
+                        //
+                        // DrawHoldBar clamps the bar's near end to the judgement line, which is what
+                        // keeps it on screen after the head has been struck: the line eats the bar
+                        // from the bottom until the tail (the next note) arrives.
+                        if (holding)
+                            DrawHoldBar(field, note.Lane, fall + noteH * 0.5f,
+                                fall + noteH * 0.5f + (float)(holdEnd * speed));
+
+                        // The trail only makes sense while the clock is moving: it is the distance the
+                        // clock advanced since the previous frame, so a frozen clock (pause, death
+                        // screen) produces none rather than a smear of a note that is standing still.
+                        // It keeps running after the hit as well, so the line eats the ghosts from the
+                        // bottom up instead of the whole trail blinking out with the note.
+                        if (Cfg.SmoothFalling && !Chart.ClockFrozen && _lastTrailTime > 0.0)
+                        {
+                            float travel = (float)((now - _lastTrailTime) * speed);
+                            if (travel > 0.05f && travel < h * 0.5f)
+                                DrawTrail(field, c, fall, travel, note.Lane);
+                        }
+                    }
+
+                    // ---- the falling note ------------------------------------------------
+                    if (age < 0.0)
+                    {
+                        if (!Cfg.ShowNotes)
+                            continue;
+
+                        // The note's box, projected: its size and its distance from the lane group's
+                        // centre shrink together, which is what keeps it exactly on its own lane's
+                        // converging edges instead of beside them. With 3D off the scale is 1 and
+                        // this is the plain lane-width rectangle it always was.
+                        float bodyW = Mathf.Max(1f, (laneW - 4f) * noteScale);
+                        float bodyH = Mathf.Max(1f, noteH * noteScale);
+                        float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, noteScale)
+                                           + LaneWanderX(note.Lane);
+                        float bodyY = centreY - bodyH * 0.5f + LaneWanderY(note.Lane);
+                        FillNote(new Rect(bodyCentre - bodyW * 0.5f, bodyY, bodyW, bodyH),
+                            c, edge, refScale);
+                        continue;
+                    }
+
                 // ---- strike pop ----------------------------------------------------
                 // Reaching the line pins the note there. It then swells and shrinks, but its
                 // BOTTOM EDGE stays welded to the judgement line throughout, so the note reads as
                 // resting on the line rather than floating over it. Purely time driven: the
                 // game's judgement is never consulted.
-                double age = now - note.HitTime;
-                if (age >= 0.0)
-                {
-                    if (!Cfg.ShowHitEffects || age > ChartReader.StrikePopSeconds)
-                        continue;
+                //
+                // A HOLD's pop does not shrink while the key is still down: it swells to the strike
+                // size and then stands still for the whole hold, and only shrinks away once the tail
+                // (the next note) arrives. The feedback for a hold has to say "still holding", not
+                // "done".
+                double popAge = age - holdEnd;                      // < 0 while the hold is held
+                if (!Cfg.ShowHitEffects || popAge > ChartReader.StrikePopSeconds)
+                    continue;
 
-                    float t = (float)(age / ChartReader.StrikePopSeconds);   // 0..1
+                float popScale;
+                float fade;
+                if (popAge < 0.0)
+                {
+                    // Held: swell over the first quarter of a pop window, then hold that size.
+                    float grow = (float)(age / (ChartReader.StrikePopSeconds * 0.25));
+                    popScale = 1f + StrikeGrow * Mathf.Clamp01(grow);
+                    fade = 1f;
+                }
+                else if (holding)
+                {
+                    // Released: shrink from the full strike size, fading as it goes.
+                    float u = (float)(popAge / ChartReader.StrikePopSeconds);   // 0..1
+                    popScale = (1f + StrikeGrow) - (float)((1f + StrikeGrow - StrikeShrink2) * u);
+                    fade = 1f - u * u;
+                }
+                else
+                {
+                    float t = (float)(popAge / ChartReader.StrikePopSeconds);   // 0..1
 
                     // Quick swell, then a long contraction that goes well past the original size
                     // so the shrink is unmistakable.
-                    float scale;
                     if (t < 0.25f)
-                        scale = 1f + StrikeGrow * (t / 0.25f);
+                        popScale = 1f + StrikeGrow * (t / 0.25f);
                     else
                     {
                         float u = (t - 0.25f) / 0.75f;
-                        scale = (1f + StrikeGrow) - (float)((1f + StrikeGrow - StrikeShrink2) * u);
+                        popScale = (1f + StrikeGrow) - (float)((1f + StrikeGrow - StrikeShrink2) * u);
                     }
-                    float w2 = laneW * scale;
-                    float h2 = noteH * scale;
-                    float fade = 1f - t * t;                                 // fade out
-                    Color pop = Fade(c, fade);
-                    Color popEdge = Fade(edge, fade);
-
-                    // Bottom edge welded to the bottom of the judgement box, so the note grows
-                    // upward and never drifts off the line as its size changes.
-                    FillNote(new Rect(x + (laneW - w2) * 0.5f, boxBottom - h2, w2, h2),
-                        pop, popEdge, refScale);
-                    continue;
+                    fade = 1f - t * t;                                 // fade out
                 }
 
-                if (Cfg.ShowNotes)
-                {
-                    // The note's box, projected: its size and its distance from the lane group's
-                    // centre shrink together, which is what keeps it exactly on its own lane's
-                    // converging edges instead of beside them. With 3D off the scale is 1 and this is
-                    // the plain lane-width rectangle it always was.
-                    float bodyW = Mathf.Max(1f, (laneW - 4f) * noteScale);
-                    float bodyH = Mathf.Max(1f, noteH * noteScale);
-                    float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, noteScale)
-                                       + LaneWanderX(note.Lane);
-                    float bodyY = centreY - bodyH * 0.5f + LaneWanderY(note.Lane);
-                    Rect body = new Rect(bodyCentre - bodyW * 0.5f, bodyY, bodyW, bodyH);
+                float w2 = laneW * popScale;
+                float h2 = noteH * popScale;
+                Color pop = Fade(c, fade);
+                Color popEdge = Fade(edge, fade);
 
-                    // A hold's body first, so it sits BEHIND the head and behind the trail. It used to
-                    // be drawn last, which hid the trail: the bar rises from the head's top edge, and
-                    // every ghost the trail draws is up there too, so the bar simply painted over the
-                    // whole trail (a hold note looked like it had no trail at all, while every other
-                    // note did).
-                    //
-                    // The bar runs from the head's top edge to the next note's top edge - see
-                    // ChartReader, where HoldSeconds is the whole gap to the next tile - so its far end
-                    // lands exactly on that note at every moment.
-                    if (Cfg.HoldSupport && note.HoldSeconds > 0.0)
-                        DrawHoldBar(field, note.Lane, fall + noteH * 0.5f,
-                            fall + noteH * 0.5f + (float)(note.HoldSeconds * speed));
-
-                    // The trail only makes sense while the clock is moving: it is the distance the
-                    // clock advanced since the previous frame, so a frozen clock (pause, death
-                    // screen) produces none rather than a smear of a note that is standing still.
-                    if (Cfg.SmoothFalling && !Chart.ClockFrozen && _lastTrailTime > 0.0)
-                    {
-                        float travel = (float)((now - _lastTrailTime) * speed);
-                        if (travel > 0.05f && travel < h * 0.5f)
-                            DrawTrail(field, c, fall, travel, note.Lane);
-                    }
-
-                    FillNote(body, c, edge, refScale);
-                }
+                // Bottom edge welded to the bottom of the judgement box, so the note grows
+                // upward and never drifts off the line as its size changes.
+                FillNote(new Rect(x + (laneW - w2) * 0.5f, boxBottom - h2, w2, h2),
+                    pop, popEdge, refScale);
+                continue;
                 }
 
                 if (Cfg.FunPetals)
@@ -1364,6 +1412,11 @@ namespace LaneReader
         /// through the same projection as the note itself, so under 3D the ghosts stay on the note's
         /// own lane (offsetting them by <c>travel</c> pixels straight up would trail them off the lane
         /// as it narrows).
+        ///
+        /// The trail outlives the note. Once the note has been struck its ghosts are still above the
+        /// line and still falling, so they are drawn until the judgement line has eaten them - each
+        /// ghost is clipped at the line instead of being dropped whole, which is what makes the trail
+        /// sink into the line rather than blink out with the note.
         /// </summary>
         private static void DrawTrail(Field field, Color c, float fall, float travel, int lane)
         {
@@ -1386,6 +1439,12 @@ namespace LaneReader
 
                 if (!Cfg.ThreeDLanes && top < field.Top)
                     continue;                       // above the playfield, same gate as the note
+
+                // Eaten by the judgement line: only the part above the line is drawn.
+                if (top + height > field.View.JudgeY)
+                    height = field.View.JudgeY - top;
+                if (height <= 0f)
+                    continue;
 
                 float width = Mathf.Max(1f, (field.Width - 4f) * scale);
                 float centre = field.Centre(lane, scale) + wanderX;
@@ -1693,12 +1752,19 @@ namespace LaneReader
         /// on the next note at every moment - the bar is the whole reach of the hold, which is what
         /// the game itself draws (its hold mesh runs from the held tile to that tile's next floor).
         ///
-        /// It is banded as well, so under 3D it tapers with the lane it sits in; the body's colour
-        /// carries its own alpha (and the width is a fraction of the lane's width, so it stays
-        /// proportional when the note is narrowed by the perspective).
+        /// The near end is clamped to the judgement line: once the head has been struck its top edge
+        /// is below the line, and the part of the bar below the line is behind it. That clamp is what
+        /// lets a hold outlive its head - the bar stays up and is eaten from the bottom until the tail
+        /// arrives.
+        ///
+        /// It is banded, so under 3D it tapers with the lane it sits in; the width is a fraction of
+        /// the lane's width, so it stays proportional when the perspective narrows the note.
         /// </summary>
         private static void DrawHoldBar(Field field, int lane, float headTop, float tailTop)
         {
+            if (headTop < 0f)
+                headTop = 0f;                       // below the line: eaten by it
+
             float span = tailTop - headTop;
             if (span <= 0f)
                 return;
