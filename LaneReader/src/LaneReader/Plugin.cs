@@ -1326,17 +1326,12 @@ namespace LaneReader
                         if (!Cfg.ShowNotes)
                             continue;
 
-                        // The note's box, projected: its size and its distance from the lane group's
-                        // centre shrink together, which is what keeps it exactly on its own lane's
-                        // converging edges instead of beside them. With 3D off the scale is 1 and
-                        // this is the plain lane-width rectangle it always was.
-                        float bodyW = Mathf.Max(1f, (laneW - 4f) * noteScale);
-                        float bodyH = Mathf.Max(1f, noteH * noteScale);
-                        float bodyCentre = LaneCentre(note.Lane, x0, laneW, laneGap, cx, noteScale)
-                                           + LaneWanderX(note.Lane);
-                        float bodyY = centreY - bodyH * 0.5f + LaneWanderY(note.Lane);
-                        FillNote(new Rect(bodyCentre - bodyW * 0.5f, bodyY, bodyW, bodyH),
-                            c, edge, refScale);
+                        // The note is a plate lying on its lane, so it is projected as one: its near
+                        // edge is at the bottom of the note and its far edge at the top. Under 3D that
+                        // squeezes it along the lane as it climbs and it converges with its lane's
+                        // edges; with 3D off the two edges are the plain flat rectangle it always was.
+                        FillNotePlate(field, note.Lane, fall - noteH * 0.5f, fall + noteH * 0.5f,
+                            laneW - 4f, c, edge, refScale, true);
                         continue;
                     }
 
@@ -1422,8 +1417,7 @@ namespace LaneReader
         {
             int layers = Mathf.Clamp(Cfg.SmoothGhosts, 1, 10);
             float strength = Mathf.Clamp01(Cfg.SmoothStrength);
-            float wanderX = LaneWanderX(lane);
-            float wanderY = LaneWanderY(lane);
+            float width = field.Width - 4f;
 
             // Far layers first, so the nearest one ends up on top of them and directly under the note.
             for (int k = layers; k >= 1; k--)
@@ -1432,23 +1426,24 @@ namespace LaneReader
                 if (alpha <= 0.004f)
                     continue;
 
+                // The ghost is the same plate, one frame further up the lane, so it flattens and
+                // narrows with its lane exactly like the note does.
                 float d = fall + travel * k;
-                float scale = field.View.Scale(d);
-                float height = Mathf.Max(1f, field.NoteH * scale);
-                float top = field.View.JudgeY - field.View.Rise(d) - height * 0.5f + wanderY;
+                float near = d - field.NoteH * 0.5f;
+                float far = d + field.NoteH * 0.5f;
 
-                if (!Cfg.ThreeDLanes && top < field.Top)
+                if (!Cfg.ThreeDLanes && far > field.JudgeY - field.Top)
                     continue;                       // above the playfield, same gate as the note
 
-                // Eaten by the judgement line: only the part above the line is drawn.
-                if (top + height > field.View.JudgeY)
-                    height = field.View.JudgeY - top;
-                if (height <= 0f)
+                // Eaten by the judgement line: everything below the line is behind it. The ghost is
+                // clipped rather than dropped, so the trail sinks into the line instead of blinking
+                // out with the note.
+                if (near < 0f)
+                    near = 0f;
+                if (far <= near)
                     continue;
 
-                float width = Mathf.Max(1f, (field.Width - 4f) * scale);
-                float centre = field.Centre(lane, scale) + wanderX;
-                Fill(new Rect(centre - width * 0.5f, top, width, height), Fade(c, alpha));
+                FillNotePlate(field, lane, near, far, width, Fade(c, alpha), c, 1f, false);
             }
         }
 
@@ -1624,22 +1619,42 @@ namespace LaneReader
                 return view;
             }
 
-            /// <summary>How far above the judgement line a point that far up the fall sits.</summary>
+            /// <summary>
+            /// How far above the judgement line a point that far up the fall sits.
+            ///
+            /// The projection is exact, and deliberately extends BELOW the judgement line too: a note
+            /// is a plate lying on its lane, so for the last half note of its fall its near edge is
+            /// genuinely below the line, and the height of the plate is whatever the projection says
+            /// the distance between its two edges is - not a scale factor applied to a rectangle. That
+            /// distinction is the difference between a 3D note and a small flat one.
+            ///
+            /// The only thing guarded against is the camera plane itself (d = -eye), where the
+            /// projection is infinite: it takes a short lane and a strong taper to get anywhere near
+            /// it, but there is no reason to leave that to chance.
+            /// </summary>
             public float Rise(float d)
             {
                 if (Flat)
                     return d;
-                if (d <= 0f)
-                    return 0f;
-                return LineLen * d / (d + Eye);
+
+                float u = CameraDepth(d);
+                return LineLen * (u - Eye) / u;
             }
 
             /// <summary>What a flat size has to be multiplied by at that distance.</summary>
             public float Scale(float d)
             {
-                if (Flat || d <= 0f)
+                if (Flat)
                     return 1f;
-                return Eye / (d + Eye);
+                return Eye / CameraDepth(d);
+            }
+
+            /// <summary>d + eye, kept away from the camera plane (and therefore from zero).</summary>
+            private float CameraDepth(float d)
+            {
+                float u = d + Eye;
+                float closest = Eye * 0.05f;
+                return u < closest ? closest : u;
             }
 
             /// <summary>
@@ -1682,27 +1697,99 @@ namespace LaneReader
             }
         }
 
-        /// <summary>Where lane <paramref name="lane"/>'s centre sits at the given perspective scale.</summary>
-        private static float LaneCentre(int lane, float x0, float laneW, float laneGap, float cx, float p)
+        /// <summary>
+        /// Paints a note-shaped plate lying on its lane: the piece of the flat note box between
+        /// <paramref name="dNear"/> and <paramref name="dFar"/> (flat pixels of fall above the
+        /// judgement line, near edge first), <paramref name="flatWidth"/> wide when seen flat.
+        ///
+        /// Two things come out of doing it this way round rather than scaling the flat rectangle:
+        ///
+        ///   * the plate's height is the projected distance between its two edges, so a note high up
+        ///     the lane is squeezed along the lane - it flattens out, which is what a plate seen from
+        ///     a low angle does, and what "drawn smaller" never looks like;
+        ///   * it is painted in horizontal bands, so its sides follow the lane's converging edges
+        ///     instead of being parallel.
+        ///
+        /// The band count is 1 when there is no perspective, where the slab IS a rectangle: that path
+        /// is then the exact rectangle the overlay has always drawn, band for band and pixel for
+        /// pixel. Only the border is inset per band (the first and last bands carry the top and bottom
+        /// edges, the middle ones only the sides), which is what keeps a bordered plate from growing a
+        /// horizontal line at every band boundary.
+        /// </summary>
+        private static void FillNotePlate(Field field, int lane, float dNear, float dFar, float flatWidth,
+            Color c, Color edge, float refScale, bool bordered)
         {
-            float centre = LaneX(lane, x0, laneW, laneGap, cx) + laneW * 0.5f;
-            return cx + (centre - cx) * p;
+            if (dFar <= dNear)
+                return;
+
+            int bands = field.View.Flat ? 1 : 3;
+            float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
+            float wanderX = LaneWanderX(lane);
+            float wanderY = LaneWanderY(lane);
+
+            for (int band = 0; band < bands; band++)
+            {
+                float d0 = dNear + (dFar - dNear) * band / bands;
+                float d1 = dNear + (dFar - dNear) * (band + 1) / bands;
+
+                float top = field.View.JudgeY - field.View.Rise(d1) + wanderY;
+                float bottom = field.View.JudgeY - field.View.Rise(d0) + wanderY;
+                float height = bottom - top;
+                if (height <= 0f)
+                    continue;
+
+                float p = field.View.Scale((d0 + d1) * 0.5f);
+                float width = Mathf.Max(1f, flatWidth * p);
+                float centre = field.Centre(lane, p) + wanderX;
+                Rect r = new Rect(centre - width * 0.5f, top, width, height + 0.5f);
+
+                bool border = bordered && Cfg.ShowNoteBorder && r.width > b * 2f && r.height > b * 2f;
+                if (!border)
+                {
+                    Fill(r, c);
+                    continue;
+                }
+
+                Fill(r, edge);
+                float innerTop = r.y + (band == bands - 1 ? b : 0f);          // the far band carries the top edge
+                float innerHeight = r.height - (band == bands - 1 ? b : 0f) - (band == 0 ? b : 0f);
+                Fill(new Rect(r.x + b, innerTop, r.width - 2f * b, innerHeight), c);
+            }
+        }
+
+        /// <summary>
+        /// Draws one straight lane edge: a rotated rectangle from the lane's base corner up to the
+        /// vanishing point. An axis-aligned rectangle is all IMGUI can fill, and a rotated one is
+        /// exactly the line it needs to be - unlike the stack of horizontal bands the body is made of,
+        /// which leaves a one-pixel sawtooth on every step and is what read as aliasing.
+        /// </summary>
+        private static void DrawEdgeLine(float x0, float y0, float x1, float y1, float thickness,
+            Color colour)
+        {
+            float dx = x1 - x0;
+            float dy = y1 - y0;
+            float length = Mathf.Sqrt(dx * dx + dy * dy);
+            if (length <= 0.01f || thickness <= 0f)
+                return;
+
+            Matrix4x4 saved = GUI.matrix;
+            GUIUtility.RotateAroundPivot(Mathf.Atan2(dy, dx) * Mathf.Rad2Deg, new Vector2(x0, y0));
+            Fill(new Rect(x0, y0 - thickness * 0.5f, length, thickness), colour);
+            GUI.matrix = saved;
         }
 
         /// <summary>
         /// The 3D lane group: four bodies that share one apex - the vanishing point at the lane top,
         /// which is exactly where the "lane length" setting puts the top of the lane.
         ///
-        /// Each lane is drawn as a stack of horizontal bands, and the width of a band is the lane's
-        /// width at that band's own height. Because the scale falls off linearly with height (see
-        /// View), the two edges of the resulting stack are straight lines running from the lane's base
-        /// corners to that one shared apex - the lanes really do converge on a single point, with no
-        /// gap or overlap between them.
+        /// The body of a lane is drawn as a stack of horizontal bands whose width is the lane's width
+        /// at that band's height. Because the scale falls off linearly with height (see View), the
+        /// silhouette of that stack is the triangle it should be, and with a band every ~17 pixels the
+        /// steps are sub-pixel once the edges are drawn over them.
         ///
-        /// Bands rather than one triangle because IMGUI only fills axis-aligned rectangles. At this
-        /// many bands the staircase along an edge is well under a pixel, and a 2px edge line is drawn
-        /// over it anyway. The whole group is one material, so IMGUI batches all of it into a single
-        /// draw call regardless of the band count.
+        /// The two EDGES are not bands: each is one rotated rectangle running from the lane's base
+        /// corner to the shared apex, which is exact. That is what removed the sawtooth - a banded
+        /// edge steps sideways by a pixel every band, and on a 2px line that reads as aliasing.
         /// </summary>
         private static void DrawLanes3D(Field field)
         {
@@ -1713,35 +1800,42 @@ namespace LaneReader
             if (step <= 0f)
                 return;
 
-            for (int band = 0; band < Bands; band++)
+            for (int i = 0; i < FingeringPlanner.FingerCount; i++)
             {
-                // The band's middle, measured above the judgement line. Its height is the only thing
-                // the scale needs, since scale = 1 - rise / len.
-                float rise = step * (band + 0.5f);
-                float p = 1f - rise / len;
-                float width = field.Width * p;
-                if (width < 0.4f)
-                    continue;                       // sub-pixel sliver at the vanishing point
+                Matrix4x4 laneMatrix = GUI.matrix;
+                if (Cfg.FunPetals)
+                    GUIUtility.RotateAroundPivot(i * 90f, PetalRoot(field.Cx, field.JudgeY));
 
-                float y = field.JudgeY - rise - step * 0.5f;    // the band's top edge
-                float edge = Mathf.Max(1f, 2f * p);
+                float wanderX = LaneWanderX(i);
+                float wanderY = LaneWanderY(i);
+                Color line = LaneEdgeColour(i);
+                Color body = Fade(LaneBodyColour(i), Cfg.LaneOpacity);
+                float apexX = field.Cx + wanderX;
 
-                for (int i = 0; i < FingeringPlanner.FingerCount; i++)
+                for (int band = 0; band < Bands; band++)
                 {
-                    Matrix4x4 laneMatrix = GUI.matrix;
-                    if (Cfg.FunPetals)
-                        GUIUtility.RotateAroundPivot(i * 90f, PetalRoot(field.Cx, field.JudgeY));
+                    // The band's middle, measured above the judgement line. Its height is the only
+                    // thing the scale needs, since scale = 1 - rise / len.
+                    float rise = step * (band + 0.5f);
+                    float p = 1f - rise / len;
+                    float width = field.Width * p;
+                    if (width < 0.4f)
+                        continue;                       // sub-pixel sliver at the vanishing point
 
-                    float centre = field.Centre(i, p) + LaneWanderX(i);
-                    float top = y + LaneWanderY(i);
-                    float left = centre - width * 0.5f;
-
-                    Fill(new Rect(left, top, width, step + 0.5f), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
-                    Color line = LaneEdgeColour(i);
-                    Fill(new Rect(left, top, edge, step + 0.5f), line);
-                    Fill(new Rect(left + width - edge, top, edge, step + 0.5f), line);
-                    GUI.matrix = laneMatrix;
+                    float top = field.JudgeY - rise - step * 0.5f + wanderY;   // the band's top edge
+                    float centre = field.Centre(i, p) + wanderX;
+                    Fill(new Rect(centre - width * 0.5f, top, width, step + 0.5f), body);
                 }
+
+                // The edges, on top of the bands and inside the same rotation.
+                float half = field.Width * 0.5f;
+                float baseCentre = field.Centre(i, 1f) + wanderX;
+                float baseY = field.JudgeY + wanderY;
+                float apexY = field.Top + wanderY;
+                DrawEdgeLine(baseCentre - half, baseY, apexX, apexY, 2f, line);
+                DrawEdgeLine(baseCentre + half, baseY, apexX, apexY, 2f, line);
+
+                GUI.matrix = laneMatrix;
             }
         }
 
