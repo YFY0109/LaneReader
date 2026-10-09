@@ -217,6 +217,13 @@ namespace LaneReader
         /// <summary>How fast the wander moves.</summary>
         public float FunFlySpeed = 0.35f;
 
+        /// <summary>Fun: the whole overlay keeps rotating about the judgement line, on top of
+        /// <see cref="RotationDegrees"/>.</summary>
+        public bool FunSpin = false;
+
+        /// <summary>Spin speed in degrees per second.</summary>
+        public float FunSpinSpeed = 30f;
+
         /// <summary>
         /// Experimental: draw a motion-blur trail behind every falling note.
         ///

@@ -48,6 +48,9 @@ namespace LaneReader
         /// <summary>Render time of the previous drawn frame, for the experimental trail.</summary>
         private static double _lastTrailTime = -1.0;
 
+        /// <summary>Degrees the fun spin has accumulated; reset whenever the mode is off.</summary>
+        private static float _spinAngle;
+
         // ---- strike feedback: purely time driven, the game's judgement is not read ----
         private static int _chartKey = -1;
         /// <summary>
@@ -376,7 +379,12 @@ namespace LaneReader
                         GUILayout.Label("每条轨道走自己的 Perlin 噪声路径（平滑漂移，不是抖），轨道和它的音符一起走。");
                     }
 
-                    GUILayout.Label("（这里先只放了乱飞；下面两个接着加。）");
+                    Toggle("轨道持续旋转", ref Cfg.FunSpin);
+                    if (Cfg.FunSpin)
+                    {
+                        Slider("旋转速度 (度/秒)", ref Cfg.FunSpinSpeed, 5f, 180f, "F0");
+                        GUILayout.Label("整个叠加层绕判定线中点转，叠加在「整体旋转」的角度上；关掉就回到你设的角度。");
+                    }
                 }
             }
 
@@ -642,6 +650,13 @@ namespace LaneReader
 
             MeasureFrameRate();
 
+            // The fun spin is integrated here rather than read from unscaledTime so that changing the
+            // speed does not teleport the overlay; turning it off rewinds to the player's own angle.
+            if (Cfg.FunSpin)
+                _spinAngle = Mathf.Repeat(_spinAngle + Time.unscaledDeltaTime * Cfg.FunSpinSpeed, 360f);
+            else
+                _spinAngle = 0f;
+
             if (Input.GetKeyDown(Cfg.Key))
             {
                 _hidden = !_hidden;
@@ -906,9 +921,10 @@ namespace LaneReader
             {
                 // The whole overlay turns as one piece, about the middle of its judgement line, so
                 // the pivot stays put and only the angle changes. The settings panel is drawn
-                // elsewhere and is unaffected.
-                if (Cfg.RotationDegrees != 0f)
-                    GUIUtility.RotateAroundPivot(Cfg.RotationDegrees, Pivot());
+                // elsewhere and is unaffected. The fun spin is added on top of the player's angle.
+                float angle = Cfg.RotationDegrees + (Cfg.FunSpin ? _spinAngle : 0f);
+                if (angle != 0f)
+                    GUIUtility.RotateAroundPivot(angle, Pivot());
 
                 DrawOverlay(notes);
             }
