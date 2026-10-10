@@ -56,13 +56,28 @@ namespace LaneReader
 
         /// <summary>
         /// A second sprite, for the hold bar (the body between a hold's head and its tail). Set the
-        /// same way as the note's; the bar is then the picture, stretched along it. Off by default,
-        /// where the bar is the flat colour block instead.
+        /// same way as the note's; the bar is then the picture. Off by default, where the bar is the
+        /// flat colour block instead.
         /// </summary>
         public bool HoldImageEnabled = false;
 
         /// <summary>The hold bar's sprite. Relative paths resolve against the mod's own folder.</summary>
         public string HoldImagePath = "hold.png";
+
+        /// <summary>
+        /// How much of the hold one copy of the sprite covers, in beats of the hold itself: 1 (the
+        /// default) connects the picture head-to-tail once per beat, so a four-beat hold shows four
+        /// connected copies; 0 stretches a single copy over the whole bar.
+        ///
+        /// The picture is anchored to the HEAD (the bottom of the image sits on the head, i.e. on the
+        /// judgement line side) and clipped, never rescaled, where the judgement line eats the bar
+        /// from below and where the tail (the next tile) cuts it off from above. So with repeats on,
+        /// an eaten bar keeps showing the pattern it had, and the copies always land on beats.
+        ///
+        /// The shipped hold.png is drawn to tile: its pattern has a period that divides its height,
+        /// so the last row meets the first row and the joins are invisible.
+        /// </summary>
+        public float HoldImageRepeatBeats = 1f;
 
         /// <summary>Clockwise rotation of the whole overlay, in degrees. The overlay turns about
         /// the middle of its judgement line, so the pivot does not move with the angle.</summary>
@@ -289,25 +304,56 @@ namespace LaneReader
         ///
         /// The note positions are exact (they come straight from the song clock), but they are only
         /// *sampled* once per frame, so at 60 fps and 1000 px/s a note jumps about 17 px between
-        /// frames - on a fast chart that reads as stepping rather than as motion. The trail is a few
-        /// extra copies of the note, faded, placed where it was on the previous frames (the distance
-        /// the clock actually advanced since the last frame, so a paused or frozen clock gets no
-        /// trail at all). It cannot add information that was never rendered; what it does is make the
-        /// eye read the jump as movement. Off by default.
+        /// frames - on a fast chart that reads as stepping rather than as motion. The trail is a
+        /// smear of extra copies of the note, faded, placed exactly where the note was over the last
+        /// <see cref="SmoothTrailMs"/> milliseconds. It cannot add information that was never
+        /// rendered; what it does is make the eye read the jump as movement. Off by default.
+        ///
+        /// The window is a fixed number of milliseconds rather than "the last N frames": spacing the
+        /// copies by whatever the last frame happened to be made the whole trail stretch and shrink
+        /// with the frame time, which read as flicker. A frozen clock (pause, death screen) gets no
+        /// trail at all.
         /// </summary>
         public bool SmoothFalling = false;
 
-        /// <summary>How many trail copies, 1..10.</summary>
-        public int SmoothGhosts = 4;
+        /// <summary>
+        /// How many trail copies, 1..24. They are spread evenly over <see cref="SmoothTrailMs"/>,
+        /// so this is the trail's smoothness: at a handful of layers the steps between them are
+        /// visible as stripes, at a dozen or more they read as one fading smear.
+        /// </summary>
+        public int SmoothGhosts = 8;
+
+        /// <summary>How far back the trail reaches, in milliseconds.</summary>
+        public float SmoothTrailMs = 40f;
 
         /// <summary>Opacity of the nearest trail copy, as a fraction of the note's own alpha.</summary>
         public float SmoothStrength = 0.45f;
 
         /// <summary>
+        /// Experimental "in-between frames": the overlay is drawn three times per frame - once at the
+        /// position the chart had one frame ago, once at the position it will have one frame from now,
+        /// and once at its real position - with the two neighbours at
+        /// <see cref="FrameBlendAlpha"/>. The neighbours go under the real frame, so what is left of
+        /// them is a fringe of movement above and below every note, which is what the eye reads as a
+        /// higher frame rate. A "frame" here is the measured frame time (see Plugin.FrameSeconds), so
+        /// it does not change meaning when the frame rate does; a frozen clock is not blended. Off by
+        /// default - it is a taste, and it doubles nothing: 3 draws per frame instead of 1.
+        /// </summary>
+        public bool FrameBlendEnabled = false;
+
+        /// <summary>Opacity of the two neighbouring frames, 0..1.</summary>
+        public float FrameBlendAlpha = 0.35f;
+
+        /// <summary>How far away the neighbouring frames are drawn, in frames, 0.1..4.</summary>
+        public float FrameBlendOffset = 1f;
+
+        /// <summary>
         /// Hold support: the overlay reads scrFloor.holdLength, draws the hold's body as a bar running
         /// from the head to the next tile, keeps that bar on screen (and lets the judgement line eat it)
         /// after the head is struck, and holds the head's strike feedback up until the tail arrives. The
-        /// hand-split planner also feeds each release as an extra key, forced onto the head's lane.
+        /// hand-split planner also feeds each release as an extra key, forced onto the head's lane, and
+        /// the tile the hold ends on is forced onto that lane as well (see Plugin.ForceHoldTails) - the
+        /// key is still down when it arrives, so it cannot be anywhere else.
         ///
         /// On by default. A chart without holds is completely unaffected - nothing reads holdLength
         /// except this pass, and it finds nothing to do - so there is no reason to make a hold chart
@@ -367,6 +413,7 @@ namespace LaneReader
 
                 string json = File.ReadAllText(path);
                 Settings settings = JsonUtility.FromJson<Settings>(json);
+                FillMissingKeys(settings, json);
 
                 // A file written before the colours became settable has none of the colour keys, and
                 // JsonUtility leaves absent fields at their type default - which for a Color is
@@ -385,6 +432,42 @@ namespace LaneReader
             {
                 modEntry.Logger.Log("settings load failed, using defaults: " + ex.Message);
                 return new Settings();
+            }
+        }
+
+        /// <summary>
+        /// Puts the default back into every field the file does not mention.
+        ///
+        /// Unity's JsonUtility zeroes an object before it fills it, so a key that is absent from the
+        /// file comes back as the type's zero - false for a bool, 0 for a float - and NOT as the
+        /// field's initialiser. Once settings are added after a release, that turns "this config
+        /// predates the key" into a broken value rather than a mild one: 0 trail layers, a 0 ms
+        /// window, a judge line switched off. Copying the default in for the missing keys makes an
+        /// old Settings.json lose only what it actually predates. A save writes every key, so this
+        /// only ever does anything once per upgrade.
+        /// </summary>
+        private static void FillMissingKeys(Settings settings, string json)
+        {
+            if (settings == null)
+                return;
+
+            try
+            {
+                var defaults = new Settings();
+                foreach (System.Reflection.FieldInfo field in typeof(Settings).GetFields(
+                             System.Reflection.BindingFlags.Public
+                             | System.Reflection.BindingFlags.Instance))
+                {
+                    if (field.IsNotSerialized)
+                        continue;
+                    if (json.IndexOf("\"" + field.Name + "\"", StringComparison.Ordinal) >= 0)
+                        continue;
+                    field.SetValue(settings, field.GetValue(defaults));
+                }
+            }
+            catch (Exception)
+            {
+                // Reflection failing is no reason to throw the loaded settings away.
             }
         }
 

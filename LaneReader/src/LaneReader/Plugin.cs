@@ -52,9 +52,6 @@ namespace LaneReader
         private static float _nextLogAt;
         private static bool _guiLogged;
 
-        /// <summary>Render time of the previous drawn frame, for the experimental trail.</summary>
-        private static double _lastTrailTime = -1.0;
-
         /// <summary>Degrees the fun spin has accumulated; reset whenever the mode is off.</summary>
         private static float _spinAngle;
 
@@ -194,8 +191,12 @@ namespace LaneReader
                     GUILayout.EndHorizontal();
                     NoteImage.Instance.Get(NoteImage.Hold, Cfg.HoldImagePath);
                     GUILayout.Label("状态: " + NoteImage.Instance.Status(NoteImage.Hold));
-                    GUILayout.Label("这张图会沿长条方向拉伸铺满（宽度仍按「长按线条」的粗细比例）；");
-                    GUILayout.Label("图片按原样画，长按的颜色/透明度不再乘上去。");
+                    GUILayout.Label("图片的下面是长按的开头（贴着判定线那端），上面是尾巴（下一颗音符）；");
+                    GUILayout.Label("判定线从下面把它吃掉、尾巴从上面把它截掉——两端都是裁掉，不是压扁。");
+                    Slider("重复间隔 (拍, 0=整条一张)", ref Cfg.HoldImageRepeatBeats, 0f, 4f, "F2");
+                    GUILayout.Label(">0 时图片首尾相接反复铺下去，每隔这么多拍接一次（按长按自己的拍数算，");
+                    GUILayout.Label("和下落速度无关）；示例 hold.png 就是按可平铺画的，直接能用。");
+                    GUILayout.Label("宽度仍按「外观 / 颜色 → 长按」里的粗细比例；图片按原样画，不乘颜色/透明度。");
                 }
               }
             }
@@ -247,6 +248,8 @@ namespace LaneReader
                 }
                 GUILayout.Label("当前主题: " + Themes.Names[Mathf.Clamp(Cfg.Theme, 0, Themes.Names.Length - 1)]
                                 + "（手动改过颜色后这里不会跟着变）");
+                GUILayout.Label("套用主题也会把「显示 → 全屏纯色背景」按该主题设好：");
+                GUILayout.Label("只有「纯黑底 经典白线」会打开它，其它主题都关掉（想留着自己再开）。");
 
                 if (Section("轨道", ref _showColourLane))
                 {
@@ -426,6 +429,9 @@ namespace LaneReader
                     GUILayout.Label("音符越靠近灭点越窄越矮，越靠近判定线越大越快。判定线/判定框/标签都在");
                     GUILayout.Label("判定线这一端，不受影响。强度 = 判定线到「缩到一半」的距离的倒数：");
                     GUILayout.Label("1.00 时音符在判定线附近的屏幕速度和关掉 3D 时一样。");
+                    GUILayout.Label("轨道两侧是带柔边的直线（抗锯齿）；轨道体每一横条都收在边线底下，");
+                    GUILayout.Label("所以不会再看到一格一格的边。小节线越远越淡，挤到 3px 以内就不再画，");
+                    GUILayout.Label("否则灭点附近会糊成一片平行的白线。");
                 }
 
                 Toggle("长按（hold）支持", ref Cfg.HoldSupport);
@@ -433,17 +439,32 @@ namespace LaneReader
                 {
                     GUILayout.Label("读 scrFloor.holdLength 画长按长条：长条末端正好接上下一颗音符的开头");
                     GUILayout.Label("（和游戏自己一样，游戏的 hold 尾就是下一块砖）；");
-                    GUILayout.Label("拆手序还会把松手当成一颗键，强制和长按开头同轨。颜色在「外观 / 颜色 → 长按」。");
+                    GUILayout.Label("拆手序还会把松手当成一颗键，强制和长按开头同轨；长按结尾那颗音符也");
+                    GUILayout.Label("强制回到同一条轨道（手指还按着，它只能在原地）。颜色在「外观 / 颜色 → 长按」。");
                 }
 
                 Toggle("平滑下落（重影拖尾）", ref Cfg.SmoothFalling);
                 if (Cfg.SmoothFalling)
                 {
-                    IntSlider("拖尾层数", ref Cfg.SmoothGhosts, 1, 10);
+                    IntSlider("拖尾层数", ref Cfg.SmoothGhosts, 1, 24);
+                    Slider("拖尾长度 (毫秒)", ref Cfg.SmoothTrailMs, 4f, 200f, "F0");
                     Slider("拖尾浓度", ref Cfg.SmoothStrength, 0f, 1f, "F2");
-                    GUILayout.Label("音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），");
-                    GUILayout.Label("拖尾只是把它前几帧的位置淡着补画出来，让眼睛读成运动而不是跳。");
+                    GUILayout.Label("音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），拖尾就是");
+                    GUILayout.Label("把那一段固定时间里的位置淡着补画出来，让眼睛读成运动而不是跳。");
+                    GUILayout.Label("长度是固定的毫秒数、层数只决定密不密——按「上一帧走了多远」来铺会让整个");
+                    GUILayout.Label("拖尾随帧时间忽长忽短，那就是之前一卡一卡的原因。");
                     GUILayout.Label("采样冻结时（暂停、结算）不会画拖尾。纯观感，不影响时间轴。");
+                }
+
+                Toggle("补帧（叠加前后帧）", ref Cfg.FrameBlendEnabled);
+                if (Cfg.FrameBlendEnabled)
+                {
+                    Slider("前后帧透明度", ref Cfg.FrameBlendAlpha, 0f, 1f, "F2");
+                    Slider("前后帧间隔 (帧)", ref Cfg.FrameBlendOffset, 0.1f, 4f, "F2");
+                    GUILayout.Label("把上一帧和下一帧的位置各按这个透明度画一遍，再把当前帧画在上面，共 3 帧；");
+                    GUILayout.Label("「一帧」取实测帧时间，所以帧率变化时前后帧的距离不会跟着变。");
+                    GUILayout.Label("只叠会动的东西（音符/拖尾/长按/小节线），轨道和判定线画一次。");
+                    GUILayout.Label("暂停、结算时不叠。开着它每帧画 3 遍，帧数紧张就关掉。");
                 }
 
                 // ---- 娱乐（纯好玩，不影响读谱）----
@@ -880,6 +901,47 @@ namespace LaneReader
                 ApplyHandSplit();
             else
                 ApplyAdoFalling();
+
+            ForceHoldTails();
+        }
+
+        /// <summary>
+        /// Puts the tile a hold ends on - its tail - onto the head's own lane.
+        ///
+        /// A hold means the key stays down until the next tile arrives, so that tile's press IS the
+        /// release: it cannot be anywhere but under the finger that is already holding. Both planners
+        /// decide lanes without knowing that, and the hand-split planner only forces the release entry
+        /// it feeds in itself, not the press that arrives at the same instant - so the bar could run up
+        /// the head's lane and end beside a note on another one. This runs after either planner, on
+        /// the chart the drawing actually reads.
+        ///
+        /// Chained holds stay on one lane for free: the tail of one hold is the head of the next, so it
+        /// is forced on the pass that reaches it and passes the same lane on again.
+        /// </summary>
+        private static void ForceHoldTails()
+        {
+            if (!Cfg.HoldSupport)
+                return;
+
+            IList<Note> notes = Chart.Notes;
+            int forced = 0;
+            for (int i = 0; i + 1 < notes.Count; i++)
+            {
+                Note head = notes[i];
+                if (head.HoldSeconds <= 0.0)
+                    continue;
+
+                Note tail = notes[i + 1];
+                if (tail.Lane == head.Lane)
+                    continue;
+
+                tail.Lane = head.Lane;
+                notes[i + 1] = tail;
+                forced++;
+            }
+
+            if (forced > 0)
+                Logger.Log("holds: " + forced + " tail note(s) forced onto their head's lane");
         }
 
         /// <summary>The planner this mod has always shipped with; see FingeringPlanner.</summary>
@@ -1079,7 +1141,26 @@ namespace LaneReader
                 if (angle != 0f)
                     GUIUtility.RotateAroundPivot(angle, Pivot());
 
-                DrawOverlay(notes);
+                // ---- in-between frames ------------------------------------------
+                // The chart's own clock is sampled once a frame, so every note really does jump a
+                // frame's worth of fall each frame. With this on, the same overlay is drawn twice
+                // more - where the chart was one frame ago and where it will be one frame from now,
+                // both at FrameBlendAlpha - and the real frame is drawn over them afterwards, so
+                // what survives of the two neighbours is a fringe of movement around every note.
+                //
+                // The neighbours draw the time-dependent half only (notes, trails, holds, bars, beat
+                // lines): the lanes and the judgement line are in the same place in all three frames,
+                // so drawing them again would only blend them with themselves.
+                double now = Chart.RenderTime() + Cfg.TimeOffsetSeconds;
+                if (notes && Cfg.FrameBlendEnabled && !Chart.ClockFrozen)
+                {
+                    float offset = FrameSeconds() * Mathf.Clamp(Cfg.FrameBlendOffset, 0.05f, 4f);
+                    float blend = Mathf.Clamp01(Cfg.FrameBlendAlpha);
+                    DrawOverlay(notes, now - offset, blend, true);
+                    DrawOverlay(notes, now + offset, blend, true);
+                }
+
+                DrawOverlay(notes, now, 1f, false);
             }
             catch (Exception ex)
             {
@@ -1115,10 +1196,33 @@ namespace LaneReader
         }
 
         /// <summary>
+        /// How long a frame lasts, in seconds - what <see cref="Settings.FrameBlendOffset"/> counts.
+        ///
+        /// It is the measured average (see <see cref="MeasureFrameRate"/>) rather than the last
+        /// frame's own delta: a spike of one slow frame must not fling the neighbouring frames
+        /// halfway up the lane. Until the first sample lands, the engine's own delta is the only
+        /// answer available, and it is clamped so that a hitched or unfocused frame still cannot
+        /// smear the overlay across the screen.
+        /// </summary>
+        private static float FrameSeconds()
+        {
+            if (_frameMs > 0.05f)
+                return Mathf.Clamp(_frameMs * 0.001f, 0.001f, 0.1f);
+            return Mathf.Clamp(Time.unscaledDeltaTime, 0.001f, 0.1f);
+        }
+
+        /// <summary>
         /// Draws the overlay. The frame is always drawn; <paramref name="drawNotes"/> is false on
         /// the "press any key to start" prompt, where only the frame is wanted.
+        ///
+        /// <paramref name="now"/> is the chart time to draw, and it is not always the current one: the
+        /// in-between-frame passes draw the same overlay at neighbouring times (see <see cref="Draw"/>).
+        /// <paramref name="mix"/> multiplies the alpha of everything that is time dependent, and
+        /// <paramref name="timeOnly"/> skips the half that never moves - the lanes, the judgement line,
+        /// its boxes, the labels and the frame rate - which is what keeps those extra draws from
+        /// blending the static frame with itself and darkening it.
         /// </summary>
-        private static void DrawOverlay(bool drawNotes)
+        private static void DrawOverlay(bool drawNotes, double now, float mix, bool timeOnly)
         {
             float refScale = RefScale();
             float w = Screen.width;
@@ -1165,7 +1269,7 @@ namespace LaneReader
             field.NoteH = noteH;
 
             // ---- lanes ----------------------------------------------------------
-            if (Cfg.ShowLanes)
+            if (!timeOnly && Cfg.ShowLanes)
             {
                 if (Cfg.ThreeDLanes)
                 {
@@ -1191,19 +1295,17 @@ namespace LaneReader
                 }
             }
 
-            double now = Chart.RenderTime() + Cfg.TimeOffsetSeconds;
-
             // ---- beat lines -----------------------------------------------------
             // Drawn right after the lanes so they sit behind the line, the boxes and the notes:
             // they are a reading aid, not a playfield element. They scroll with the clock, so the
             // pre-start prompt (which draws the frame only) leaves them out.
             if (drawNotes && Cfg.ShowBeatLines && Chart.Ready)
-                DrawBeatLines(field, refScale, w, x0, total, judgeY, laneTop, speed, noteH, now);
+                DrawBeatLines(field, refScale, w, x0, total, judgeY, laneTop, speed, noteH, now, mix);
 
             // ---- judgement line -------------------------------------------------
             // Full width by default; a shorter one is centred on the playfield rather than on the
             // screen, so it stays with the lanes when the overlay is offset sideways.
-            if (Cfg.ShowJudgeLine)
+            if (!timeOnly && Cfg.ShowJudgeLine)
             {
                 float lineWidth = w;
                 float lineLeft = 0f;
@@ -1219,7 +1321,7 @@ namespace LaneReader
 
             // ---- key labels -----------------------------------------------------
             // Never change GUI.skin.font here: the panel text has to stay on the game's own font.
-            if (Cfg.ShowKeyLabels)
+            if (!timeOnly && Cfg.ShowKeyLabels)
             {
                 var label = new GUIStyle(GUI.skin.label);
                 label.fontSize = Mathf.RoundToInt(18f * refScale);
@@ -1244,7 +1346,7 @@ namespace LaneReader
             // One rectangle per lane, same size as a note, sitting so its CENTRE LINE is the
             // judgement line. Notes are positioned against that centre line, which is what makes
             // the strike pop grow symmetrically about the line instead of off one edge.
-            if (Cfg.ShowJudgeBoxes)
+            if (!timeOnly && Cfg.ShowJudgeBoxes)
             {
                 float t = Mathf.Max(2f, 2f * refScale);
                 Color box = Cfg.JudgeBoxColour;
@@ -1270,7 +1372,7 @@ namespace LaneReader
             // it is there on the pre-start prompt too. It sits below the key labels when those are
             // on; notes and the strike pop all stay at boxBottom and above, so nothing is hidden by
             // it.
-            if (Cfg.ShowFps)
+            if (!timeOnly && Cfg.ShowFps)
             {
                 var fpsStyle = new GUIStyle(GUI.skin.label);
                 fpsStyle.fontSize = Mathf.RoundToInt(16f * refScale);
@@ -1359,8 +1461,12 @@ namespace LaneReader
                     }
 
                     float x = LaneX(note.Lane, x0, laneW, laneGap, cx);
-                    Color c = NoteBodyColour(note.Lane);
-                    Color edge = NoteEdgeColour(note.Lane);
+
+                    // Everything time dependent is faded by mix, which is 1 in the ordinary pass and
+                    // the blend opacity in the in-between-frame passes. The colour carries it, so it
+                    // reaches the sprite paths too (a sprite is drawn at its colour's alpha).
+                    Color c = Fade(NoteBodyColour(note.Lane), mix);
+                    Color edge = Fade(NoteEdgeColour(note.Lane), mix);
 
                     // ---- what goes behind the note: its hold bar, then its trail ------------
                     if (Cfg.ShowNotes)
@@ -1375,19 +1481,16 @@ namespace LaneReader
                         // from the bottom until the tail (the next note) arrives.
                         if (holding)
                             DrawHoldBar(field, note.Lane, fall + noteH * 0.5f,
-                                fall + noteH * 0.5f + (float)(holdEnd * speed));
+                                fall + noteH * 0.5f + (float)(holdEnd * speed),
+                                note.Beats + note.HoldBeats, mix);
 
-                        // The trail only makes sense while the clock is moving: it is the distance the
-                        // clock advanced since the previous frame, so a frozen clock (pause, death
-                        // screen) produces none rather than a smear of a note that is standing still.
-                        // It keeps running after the hit as well, so the line eats the ghosts from the
-                        // bottom up instead of the whole trail blinking out with the note.
-                        if (Cfg.SmoothFalling && !Chart.ClockFrozen && _lastTrailTime > 0.0)
-                        {
-                            float travel = (float)((now - _lastTrailTime) * speed);
-                            if (travel > 0.05f && travel < h * 0.5f)
-                                DrawTrail(field, c, fall, travel, note.Lane);
-                        }
+                        // The trail only makes sense while the clock is moving: it is the note's own
+                        // positions over the last few milliseconds, so a frozen clock (pause, death
+                        // screen) would smear a note that is standing still. It keeps running after
+                        // the hit as well, so the line eats the ghosts from the bottom up instead of
+                        // the whole trail blinking out with the note.
+                        if (Cfg.SmoothFalling && !Chart.ClockFrozen)
+                            DrawTrail(field, c, fall, speed, note.Lane);
                     }
 
                     // ---- the falling note ------------------------------------------------
@@ -1401,7 +1504,8 @@ namespace LaneReader
                         // squeezes it along the lane as it climbs and it converges with its lane's
                         // edges; with 3D off the two edges are the plain flat rectangle it always was.
                         FillNotePlate(field, note.Lane, fall - noteH * 0.5f, fall + noteH * 0.5f,
-                            laneW - 4f, NoCut, c, edge, refScale, true);
+                            laneW - 4f, NoCut, c, edge, refScale, true,
+                            PlateBands(field, fall - noteH * 0.5f, fall + noteH * 0.5f));
                         continue;
                     }
 
@@ -1466,51 +1570,74 @@ namespace LaneReader
                 if (Cfg.FunPetals)
                     GUI.matrix = laneMatrix;
             }
-
-            _lastTrailTime = now;
         }
 
         /// <summary>
-        /// The experimental motion-blur trail: the note, drawn again where it was on the previous
-        /// frames, faded. <paramref name="travel"/> is how far it moved since the last frame, so the
-        /// copies land exactly on the previous frames' positions rather than on a guess - and they go
-        /// through the same projection as the note itself, so under 3D the ghosts stay on the note's
-        /// own lane (offsetting them by <c>travel</c> pixels straight up would trail them off the lane
-        /// as it narrows).
+        /// The experimental motion-blur trail: the note, drawn again where it was over the last
+        /// <see cref="Settings.SmoothTrailMs"/> milliseconds, faded. The copies land exactly on the
+        /// note's own past positions - the fall is linear in time, so a copy a fixed time back is a
+        /// fixed distance back - and they go through the same projection as the note itself, so under
+        /// 3D the ghosts stay on the note's own lane (offsetting them by that many pixels straight up
+        /// would trail them off the lane as it narrows).
+        ///
+        /// The window is a fixed span of TIME, not "the last N frames". Spacing the copies by the
+        /// distance the clock moved since the previous frame made the trail stretch and shrink with
+        /// the frame time, which is what read as layered flicker; a fixed window is stable, and
+        /// spreading <see cref="Settings.SmoothGhosts"/> copies evenly across it makes the steps
+        /// between them small enough to read as one smear.
         ///
         /// The trail outlives the note. Once the note has been struck its ghosts are still above the
         /// line and still falling, so they are drawn until the judgement line has eaten them - each
         /// ghost is clipped at the line instead of being dropped whole, which is what makes the trail
         /// sink into the line rather than blink out with the note.
         /// </summary>
-        private static void DrawTrail(Field field, Color c, float fall, float travel, int lane)
+        private static void DrawTrail(Field field, Color c, float fall, float speed, int lane)
         {
-            int layers = Mathf.Clamp(Cfg.SmoothGhosts, 1, 10);
+            int layers = Mathf.Clamp(Cfg.SmoothGhosts, 1, 24);
+
+            // c already carries the in-between-frame blend, so the trail fades with the note it
+            // belongs to; this is only how strong the trail is against the note itself.
             float strength = Mathf.Clamp01(Cfg.SmoothStrength);
             float width = field.Width - 4f;
+            if (strength <= 0.004f)
+                return;
+
+            // The window, in pixels of fall, and the spacing that spreads the layers evenly over it.
+            // A ghost k steps back is exactly a fixed time back, so the trail keeps its shape whatever
+            // the frame rate is doing.
+            float window = Mathf.Max(2f, Cfg.SmoothTrailMs) * 0.001f * speed;
+            float step = window / layers;
 
             // Far layers first, so the nearest one ends up on top of them and directly under the note.
             for (int k = layers; k >= 1; k--)
             {
-                float alpha = strength * (1f - (k - 1f) / layers);
+                // The falloff is measured at the layer's middle, so the nearest layer carries very
+                // nearly the full strength and the farthest one is already almost gone.
+                float alpha = strength * (1f - (k - 0.5f) / layers);
                 if (alpha <= 0.004f)
                     continue;
 
-                // The ghost is the same plate, one frame further up the lane, so it flattens and
+                // The ghost is the same plate, a fixed step further up the lane, so it flattens and
                 // narrows with its lane exactly like the note does. Everything below the judgement line
                 // is behind it and is cut away rather than dropped whole, so the trail sinks into the
                 // line instead of blinking out with the note.
-                float d = fall + travel * k;
+                float d = fall + step * k;
                 float near = d - field.NoteH * 0.5f;
                 float far = d + field.NoteH * 0.5f;
 
                 // Flat, the playfield ends at the lane top, so a ghost that has climbed past it is
                 // dropped - the same gate the note itself uses. Under 3D the lane runs on to the
-                // vanishing point and there is no such edge.
+                // vanishing point and there is no such edge, so a ghost that has shrunk below a pixel
+                // is dropped instead: past that it is a speck of flicker, not a trail.
                 if (!Cfg.ThreeDLanes && far > field.JudgeY - field.Top)
                     continue;
+                if (Cfg.ThreeDLanes && field.NoteH * field.View.Scale(near) < 1.5f)
+                    continue;
 
-                FillNotePlate(field, lane, near, far, width, 0f, Fade(c, alpha), c, 1f, false);
+                // Three bands is plenty here: a ghost is drawn at a fraction of the note's alpha and
+                // there are a dozen of them overlapping, so the staircase between its bands is far
+                // below what the smear underneath it shows.
+                FillNotePlate(field, lane, near, far, width, 0f, Fade(c, alpha), c, 1f, false, 3);
             }
         }
 
@@ -1798,15 +1925,34 @@ namespace LaneReader
         ///
         /// The band count is 1 when there is no perspective, where the slab IS a rectangle: that path
         /// is then the exact rectangle the overlay has always drawn, band for band and pixel for
-        /// pixel. Only the border is inset per band (the first and last bands carry the top and bottom
-        /// edges, the middle ones only the sides), which is what keeps a bordered plate from growing a
-        /// horizontal line at every band boundary.
+        /// pixel. Otherwise the caller asks for a band every couple of pixels of projected height
+        /// (see <see cref="PlateBands"/>), so the plate's sides - and a custom sprite laid over it -
+        /// follow the lane's converging edges instead of stepping along them in three big blocks.
+        ///
+        /// The outline is applied against the PLATE's own top and bottom edges rather than each band's:
+        /// every band is painted in the outline colour and then the body is filled on top of it inset
+        /// by the outline's thickness, so a band that lies entirely inside the bottom outline is solid
+        /// outline and the outline keeps its thickness however finely the plate is cut up. Asking a
+        /// two-pixel band whether it is bigger than a five-pixel outline, which is what this used to
+        /// do, switched the outline off on every band of a tall note.
         /// </summary>
         /// <summary>Passed as FillNotePlate's cut to mean "nothing cuts this plate".</summary>
         private const float NoCut = float.NegativeInfinity;
 
+        /// <summary>
+        /// How many horizontal bands a plate is cut into: one per couple of pixels of its own
+        /// projected height. A plate on the judgement line is the tallest it ever gets and gets the
+        /// most bands, while a sliver up near the vanishing point costs two - so the taper is smooth
+        /// where it can be seen and cheap where it cannot.
+        /// </summary>
+        private static int PlateBands(Field field, float dNear, float dFar)
+        {
+            float height = field.View.Rise(dFar) - field.View.Rise(dNear);
+            return Mathf.Clamp(Mathf.CeilToInt(height / 2f), 2, 24);
+        }
+
         private static void FillNotePlate(Field field, int lane, float dNear, float dFar, float flatWidth,
-            float cut, Color c, Color edge, float refScale, bool bordered)
+            float cut, Color c, Color edge, float refScale, bool bordered, int bands)
         {
             if (dFar <= dNear)
                 return;
@@ -1854,11 +2000,23 @@ namespace LaneReader
             if (dFar <= dNear)
                 return;
 
-            int bands = field.View.Flat ? 1 : 3;
+            // Three bands drew a visible staircase on a sprite - each band is its own rectangle, so a
+            // picture cut into thirds reads as three stacked blocks of slightly different widths. The
+            // caller asks for a band every couple of pixels of the plate's projected height instead,
+            // which is what makes the picture look like the one tapered plate it is. A flat plate is a
+            // rectangle, so it stays one band.
+            bands = field.View.Flat ? 1 : Mathf.Clamp(bands, 2, 24);
             float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
             float wanderX = LaneWanderX(lane);
             float wanderY = LaneWanderY(lane);
             float span = dFar - dNear;
+
+            // Where the plate's own near and far edges land, and whether its outline fits at all. This
+            // belongs to the PLATE, not to a band: see the class comment above.
+            float plateTop = field.View.JudgeY - field.View.Rise(dFar) + wanderY;
+            float plateBottom = field.View.JudgeY - field.View.Rise(dNear) + wanderY;
+            bool border = bordered && Cfg.ShowNoteBorder
+                && flatWidth > b * 2f && plateBottom - plateTop > b * 2f;
 
             for (int band = 0; band < bands; band++)
             {
@@ -1874,7 +2032,13 @@ namespace LaneReader
                 float p = field.View.Scale((d0 + d1) * 0.5f);
                 float width = Mathf.Max(1f, flatWidth * p);
                 float centre = field.Centre(lane, p) + wanderX;
-                Rect r = new Rect(centre - width * 0.5f, top, width, height + 0.5f);
+
+                // The bands tile exactly - no half-pixel overlap. An overlap doubles the alpha where
+                // two semi-transparent bands meet, which is a brighter line at every band boundary
+                // over a dark level: that is exactly what the note and lane fills used to show. Two
+                // adjacent rectangles that share an edge exactly cover every pixel once under the
+                // GPU's own pixel rule, so the overlap was never doing anything but that.
+                Rect r = new Rect(centre - width * 0.5f, top, width, height);
 
                 if (image != null)
                 {
@@ -1889,17 +2053,23 @@ namespace LaneReader
                     continue;
                 }
 
-                bool border = bordered && Cfg.ShowNoteBorder && r.width > b * 2f && r.height > b * 2f;
                 if (!border)
                 {
                     Fill(r, c);
                     continue;
                 }
 
+                // The outline is the whole band, and the body is painted on top of it inset by the
+                // outline's thickness - measured from the plate's own top and bottom edges, not from
+                // this band's, so a band that lies entirely inside the bottom outline draws no body at
+                // all and the outline keeps its thickness however many bands the plate is cut into.
                 Fill(r, edge);
-                float innerTop = r.y + (band == bands - 1 ? b : 0f);          // the far band carries the top edge
-                float innerHeight = r.height - (band == bands - 1 ? b : 0f) - (band == 0 ? b : 0f);
-                Fill(new Rect(r.x + b, innerTop, r.width - 2f * b, innerHeight), c);
+                float bodyTop = Mathf.Max(r.y, plateTop + b);
+                float bodyBottom = Mathf.Min(r.y + r.height, plateBottom - b);
+                float bodyHeight = bodyBottom - bodyTop;
+                float bodyWidth = r.width - 2f * b;
+                if (bodyHeight > 0f && bodyWidth > 0f)
+                    Fill(new Rect(r.x + b, bodyTop, bodyWidth, bodyHeight), c);
             }
         }
 
@@ -1908,6 +2078,13 @@ namespace LaneReader
         /// vanishing point. An axis-aligned rectangle is all IMGUI can fill, and a rotated one is
         /// exactly the line it needs to be - unlike the stack of horizontal bands the body is made of,
         /// which leaves a one-pixel sawtooth on every step and is what read as aliasing.
+        ///
+        /// It is filled with <see cref="EdgeRamp"/> rather than the flat white pixel, which gives the
+        /// line a soft cross-section. The quad's sideways position is quantised to the pixel grid like
+        /// anything else, so on a long, nearly straight edge the boundary can still step a pixel
+        /// sideways now and then; with a ramp that step is a change of brightness in the outer
+        /// pixels rather than a hard jagged edge, which is the most an IMGUI quad can be
+        /// anti-aliased.
         /// </summary>
         private static void DrawEdgeLine(float x0, float y0, float x1, float y1, float thickness,
             Color colour)
@@ -1920,8 +2097,32 @@ namespace LaneReader
 
             Matrix4x4 saved = GUI.matrix;
             GUIUtility.RotateAroundPivot(Mathf.Atan2(dy, dx) * Mathf.Rad2Deg, new Vector2(x0, y0));
-            Fill(new Rect(x0, y0 - thickness * 0.5f, length, thickness), colour);
+
+            Color prev = GUI.color;
+            GUI.color = colour;
+            GUI.DrawTexture(new Rect(x0, y0 - (thickness + 1f) * 0.5f, length, thickness + 1f),
+                EdgeRamp(), ScaleMode.StretchToFill, true);
+            GUI.color = prev;
             GUI.matrix = saved;
+        }
+
+        /// <summary>The soft cross-section used by <see cref="DrawEdgeLine"/>: a 1x8 alpha ramp.</summary>
+        private static Texture2D _edgeRamp;
+
+        private static Texture2D EdgeRamp()
+        {
+            if (_edgeRamp == null)
+            {
+                float[] alpha = { 0.08f, 0.40f, 0.80f, 1f, 1f, 0.80f, 0.40f, 0.08f };
+                _edgeRamp = new Texture2D(1, alpha.Length, TextureFormat.RGBA32, false);
+                for (int i = 0; i < alpha.Length; i++)
+                    _edgeRamp.SetPixel(0, i, new Color(1f, 1f, 1f, alpha[i]));
+                _edgeRamp.Apply();
+                _edgeRamp.wrapMode = TextureWrapMode.Clamp;
+                _edgeRamp.filterMode = FilterMode.Bilinear;
+                _edgeRamp.hideFlags = HideFlags.HideAndDontSave;
+            }
+            return _edgeRamp;
         }
 
         /// <summary>
@@ -1930,16 +2131,30 @@ namespace LaneReader
         ///
         /// The body of a lane is drawn as a stack of horizontal bands whose width is the lane's width
         /// at that band's height. Because the scale falls off linearly with height (see View), the
-        /// silhouette of that stack is the triangle it should be, and with a band every ~17 pixels the
-        /// steps are sub-pixel once the edges are drawn over them.
+        /// silhouette of that stack is the triangle it should be.
+        ///
+        /// Two things about those bands are what stopped them being visible as bands:
+        ///
+        ///   * they TILE exactly, with no half-pixel overlap. An overlap doubles the alpha where two
+        ///     semi-transparent bands meet, and the lane body is drawn at a few percent - so the
+        ///     overlaps were brighter white lines every twenty pixels, right across the lane, which is
+        ///     exactly what they looked like;
+        ///   * each is inset by a pixel on each side, so the half-step a band makes against the true
+        ///     triangle (about 0.6 px with a band every 17 px) stays UNDER the edge line instead of
+        ///     poking out past it. A band whose width came from its own middle is wider than the
+        ///     triangle over its lower half, and that sliver sticking out along the edge is the
+        ///     sawtooth that was still visible after the edges became real lines.
         ///
         /// The two EDGES are not bands: each is one rotated rectangle running from the lane's base
-        /// corner to the shared apex, which is exact. That is what removed the sawtooth - a banded
-        /// edge steps sideways by a pixel every band, and on a 2px line that reads as aliasing.
+        /// corner to the shared apex, which is exact, drawn with a soft cross-section (see
+        /// DrawEdgeLine).
         /// </summary>
         private static void DrawLanes3D(Field field)
         {
             const int Bands = 96;
+
+            // Half a step of sideways movement, with room to spare: see the inset below.
+            const float EdgeInset = 2f;
 
             float len = field.JudgeY - field.Top;
             float step = len / Bands;
@@ -1957,26 +2172,32 @@ namespace LaneReader
                 Color line = LaneEdgeColour(i);
                 Color body = Fade(LaneBodyColour(i), Cfg.LaneOpacity);
                 float apexX = field.Cx + wanderX;
+                float baseY = field.JudgeY + wanderY;
 
                 for (int band = 0; band < Bands; band++)
                 {
+                    // The band's two edges, in pixels above the judgement line, from the same
+                    // expression the neighbouring band uses for its own edge - so the shared edge is
+                    // the same number twice and the two rectangles cannot leave a hairline between
+                    // them.
+                    float near = step * band;
+                    float far = step * (band + 1);
+
                     // The band's middle, measured above the judgement line. Its height is the only
                     // thing the scale needs, since scale = 1 - rise / len.
-                    float rise = step * (band + 0.5f);
+                    float rise = (near + far) * 0.5f;
                     float p = 1f - rise / len;
-                    float width = field.Width * p;
+                    float width = field.Width * p - EdgeInset;
                     if (width < 0.4f)
                         continue;                       // sub-pixel sliver at the vanishing point
 
-                    float top = field.JudgeY - rise - step * 0.5f + wanderY;   // the band's top edge
                     float centre = field.Centre(i, p) + wanderX;
-                    Fill(new Rect(centre - width * 0.5f, top, width, step + 0.5f), body);
+                    Fill(new Rect(centre - width * 0.5f, baseY - far, width, far - near), body);
                 }
 
                 // The edges, on top of the bands and inside the same rotation.
                 float half = field.Width * 0.5f;
                 float baseCentre = field.Centre(i, 1f) + wanderX;
-                float baseY = field.JudgeY + wanderY;
                 float apexY = field.Top + wanderY;
                 DrawEdgeLine(baseCentre - half, baseY, apexX, apexY, 2f, line);
                 DrawEdgeLine(baseCentre + half, baseY, apexX, apexY, 2f, line);
@@ -1998,12 +2219,20 @@ namespace LaneReader
         /// arrives.
         ///
         /// It is banded, so under 3D it tapers with the lane it sits in; the width is a fraction of
-        /// the lane's width, so it stays proportional when the perspective narrows the note. A custom
-        /// hold sprite, when one is set, is stretched along the bar and takes each band's slice of
-        /// itself - the bar is then the picture, drawn as authored, with neither the hold colour nor
-        /// its opacity applied (the width fraction still is).
+        /// the lane's width, so it stays proportional when the perspective narrows the note. The bands
+        /// tile exactly (no overlap: on a 45%-alpha bar an overlap is a brighter line at every
+        /// boundary) and there are enough of them that the taper is smooth, however long the hold is.
+        ///
+        /// A custom hold sprite is stretched along the bar one copy per
+        /// <see cref="Settings.HoldImageRepeatBeats"/> beats, each copy anchored to its own near end.
+        /// The image is mapped over each copy's REAL extent and then clipped - by the judgement line
+        /// eating the bar from below and by the tail cutting it off above - so a partially eaten bar
+        /// shows the part of the picture that is still there rather than a squashed whole. The bar is
+        /// then the picture, drawn as authored, with neither the hold colour nor its opacity applied
+        /// (the width fraction still is).
         /// </summary>
-        private static void DrawHoldBar(Field field, int lane, float headTop, float tailTop)
+        private static void DrawHoldBar(Field field, int lane, float headTop, float tailTop,
+            double holdBeats, float mix)
         {
             // The bar's real length, and the part of it that is on screen: the judgement line eats
             // everything below itself. Keeping the two apart matters for a custom sprite - it is mapped
@@ -2018,7 +2247,7 @@ namespace LaneReader
                 ? NoteImage.Instance.Get(NoteImage.Hold, Cfg.HoldImagePath)
                 : null;
 
-            Color colour = HoldBodyColour(lane);
+            Color colour = Fade(HoldBodyColour(lane), mix);
             if (image == null && colour.a <= 0.002f)
                 return;
 
@@ -2026,36 +2255,72 @@ namespace LaneReader
             float wanderX = LaneWanderX(lane);
             float wanderY = LaneWanderY(lane);
 
-            const int Bands = 24;
-            for (int band = Bands - 1; band >= 0; band--)
+            // How many copies of the picture the bar carries, and therefore how much of the bar one
+            // copy covers. Rounding to a whole number of copies means a copy is never cut in half
+            // mid-pattern, so the joins land on the same place in the picture every time - and the
+            // count comes from the hold's own length in beats, not from its length on screen, so the
+            // picture connects once per beat at any fall speed.
+            int copies = 1;
+            if (image != null && Cfg.HoldImageRepeatBeats > 0.01f && holdBeats > 0.0)
+                copies = Mathf.Clamp(
+                    Mathf.RoundToInt((float)(holdBeats / Cfg.HoldImageRepeatBeats)), 1, 64);
+
+            float copySpan = span / copies;
+
+            for (int copy = copies - 1; copy >= 0; copy--)
             {
-                float d0 = visible + (tailTop - visible) * band / Bands;
-                float d1 = visible + (tailTop - visible) * (band + 1) / Bands;
-                float rise0 = field.View.Rise(d0);
-                float rise1 = field.View.Rise(d1);
-                float height = rise1 - rise0;
-                if (height <= 0f)
+                float copyNear = headTop + copySpan * copy;
+                float copyFar = copyNear + copySpan;
+
+                // The copy's real extent stays copyNear..copyFar even where it is off the bottom of
+                // the screen, which is what makes the picture be clipped instead of rescaled.
+                float from = copyNear < visible ? visible : copyNear;
+                float to = copyFar > tailTop ? tailTop : copyFar;
+                if (to <= from)
                     continue;
 
-                float p = field.View.Scale((d0 + d1) * 0.5f);
-                float width = Mathf.Max(1f, (field.Width - 4f) * fraction * p);
-                float centre = field.Centre(lane, p) + wanderX;
-
-                // The band's top edge is the farther end of it, i.e. the bigger rise.
-                Rect r = new Rect(centre - width * 0.5f, field.View.JudgeY - rise1 + wanderY,
-                    width, height + 0.5f);
-
-                if (image != null)
+                // Under 3D the sides of the bar converge, so it needs bands to follow them; enough
+                // that a band is about six pixels tall, which is where the steps stop showing. Flat,
+                // the bar is a rectangle and one band is the whole truth.
+                int bands = 1;
+                if (!field.View.Flat)
                 {
-                    // v runs down the picture, the bar runs up the lane: the top of the picture is the
-                    // far end of the hold, and the picture is anchored to the bar's real extent.
-                    float v0 = 1f - (d1 - headTop) / span;
-                    float v1 = 1f - (d0 - headTop) / span;
-                    DrawSpriteSlice(r, image, new Rect(0f, v0, 1f, v1 - v0), 1f);
-                    continue;
+                    float height = field.View.Rise(to) - field.View.Rise(from);
+                    bands = Mathf.Clamp(Mathf.CeilToInt(height / 6f), 2, 48);
                 }
 
-                Fill(r, colour);
+                for (int band = bands - 1; band >= 0; band--)
+                {
+                    float d0 = from + (to - from) * band / bands;
+                    float d1 = from + (to - from) * (band + 1) / bands;
+                    float rise0 = field.View.Rise(d0);
+                    float rise1 = field.View.Rise(d1);
+                    float height = rise1 - rise0;
+                    if (height <= 0f)
+                        continue;
+
+                    float p = field.View.Scale((d0 + d1) * 0.5f);
+                    float width = Mathf.Max(1f, (field.Width - 4f) * fraction * p);
+                    float centre = field.Centre(lane, p) + wanderX;
+
+                    // The band's top edge is the farther end of it, i.e. the bigger rise.
+                    Rect r = new Rect(centre - width * 0.5f, field.View.JudgeY - rise1 + wanderY,
+                        width, height);
+
+                    if (image != null)
+                    {
+                        // v runs down the picture and the bar runs up the lane, so the BOTTOM of the
+                        // picture is the head's end of the copy - the end that sits on the judgement
+                        // line - and the top of the picture is its far end. Mapping it against the
+                        // copy's real extent is what keeps an eaten bar's remaining piece in place.
+                        float v0 = 1f - (d1 - copyNear) / copySpan;
+                        float v1 = 1f - (d0 - copyNear) / copySpan;
+                        DrawSpriteSlice(r, image, new Rect(0f, v0, 1f, v1 - v0), mix);
+                        continue;
+                    }
+
+                    Fill(r, colour);
+                }
             }
         }
 
@@ -2109,12 +2374,20 @@ namespace LaneReader
         /// positioned against the same bottom edge the notes arrive at, so it crosses the judgement
         /// line exactly on its beat, and it is only drawn from <paramref name="laneTop"/> downwards -
         /// the same top edge the notes appear at.
+        ///
+        /// Under 3D that top edge is the vanishing point, which is infinitely far away, so the grid is
+        /// bounded by readability instead of by the lane: a line closer than <see cref="MinBeatGap"/>
+        /// to the one before it - and therefore every line beyond it - is dropped, and what is still
+        /// drawn fades with the projection scale. Without that the beats pile up into a sheet of
+        /// parallel white lines across the top of the lane, which is what it looked like.
         /// </summary>
         private static void DrawBeatLines(Field field, float refScale, float screenW, float x0, float total,
-            float judgeY, float laneTop, float speed, float noteH, double now)
+            float judgeY, float laneTop, float speed, float noteH, double now, float mix)
         {
+            const float MinBeatGap = 3f;
+
             IList<BeatLine> lines = Chart.BeatLines;
-            if (lines.Count == 0)
+            if (lines.Count == 0 || mix <= 0.002f)
                 return;
 
             int perBar = Mathf.Clamp(Cfg.BeatsPerBar, 2, 16);
@@ -2133,6 +2406,7 @@ namespace LaneReader
             float left = Cfg.BeatLineFullWidth ? 0f : x0;
             float width = Cfg.BeatLineFullWidth ? screenW : total;
             float cx = screenW * 0.5f + Cfg.OffsetXPx * refScale;
+            float previousY = float.NaN;
 
             for (int index = FirstLineAtOrAfter(lines, now); index < lines.Count; index++)
             {
@@ -2148,7 +2422,7 @@ namespace LaneReader
                 // The master opacity trims the colour's own alpha; bars are still drawn a bit
                 // stronger than beats, as they were before the colours were settable.
                 Color ink = bar ? Cfg.BarLineColour : Cfg.BeatLineColour;
-                float alpha = Mathf.Clamp01(ink.a * Cfg.BeatLineAlpha * (bar ? 1.8f : 1f));
+                float alpha = Mathf.Clamp01(ink.a * Cfg.BeatLineAlpha * (bar ? 1.8f : 1f)) * mix;
 
                 float fall = (float)((line.Time - now) * speed);
                 float y = judgeY - field.View.Rise(fall);
@@ -2169,6 +2443,19 @@ namespace LaneReader
                     lineWidth = total * scale;
                 }
 
+                if (Cfg.ThreeDLanes)
+                {
+                    // Readability bound: once two lines are on top of each other, so is every line
+                    // after them, and drawing them all is what turns the grid into a white haze.
+                    if (!float.IsNaN(previousY) && previousY - y < MinBeatGap)
+                        break;
+
+                    // And what is left thins out with the perspective instead of staying full
+                    // strength all the way to the point where it piles up.
+                    alpha *= 0.35f + 0.65f * Mathf.Clamp01(scale);
+                }
+
+                previousY = y;
                 Fill(new Rect(lineLeft, y, lineWidth, thick), new Color(ink.r, ink.g, ink.b, alpha));
             }
         }

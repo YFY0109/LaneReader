@@ -65,9 +65,11 @@ if ($Install) {
     # not ASCII, are matched by wildcard so this script never has to hold a non-ASCII literal
     # (it is saved without a BOM, and PowerShell 5.1 would read one as GBK mojibake).
     Get-ChildItem (Join-Path $here "Mod") -Filter "*.txt" | Copy-Item -Destination $dest -Force
-    # The demo sprite is only staged when there is not one already: it is meant to be replaced
-    # by the player's own image, and -Install must not overwrite that.
-    $demo = Join-Path $dest "note.png"
-    if (-not (Test-Path $demo)) { Copy-Item (Join-Path $here "Mod\note.png") $demo -Force }
+    # The demo sprites are only staged when there is not one already: they are meant to be replaced
+    # by the player's own images, and -Install must not overwrite that.
+    foreach ($demo in @("note.png", "hold.png")) {
+        $staged = Join-Path $dest $demo
+        if (-not (Test-Path $staged)) { Copy-Item (Join-Path $here "Mod\$demo") $staged -Force }
+    }
     Write-Host "installed -> $dest"
 }

@@ -35,6 +35,15 @@ namespace LaneReader
                 return;
 
             s.Theme = index;
+
+            // A theme is the whole look, the full-screen backdrop included: every theme but the
+            // opaque-black one paints over nothing, so picking one of those has to also switch the
+            // backdrop off. It used to leave it exactly as it was, which meant one press of the black
+            // theme left a solid black wall over every other theme from then on, with no way back but
+            // the switch buried in 「显示」. The switch is of course still there, and still wins: apply
+            // a theme and then turn the backdrop back on if that is the look you want.
+            s.BackgroundEnabled = false;
+
             switch (((index % Names.Length) + Names.Length) % Names.Length)
             {
                 case 0: Classic(s); break;
