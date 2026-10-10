@@ -143,6 +143,18 @@ namespace LaneReader
         public float LaneOpacity = 0.06f;
 
         /// <summary>
+        /// How thick the two lane edges are, in reference pixels (1080p). 3 by default.
+        ///
+        /// It is not only taste: under 3D the lane body is a stack of horizontal bands, and each band
+        /// is up to a pixel narrower than the true triangle at its own bottom edge (the bands are
+        /// inscribed in it, so nothing pokes out past the edge). The edge line is drawn ON the true
+        /// edge and covers that difference - the thicker it is, the more of the band staircase it
+        /// hides, which is why the default went from 2 to 3. Widen it further if a sawtooth still
+        /// shows through at an extreme perspective strength.
+        /// </summary>
+        public float LaneEdgePx = 3f;
+
+        /// <summary>
         /// Draw the frame rate (and the frame time) under the judgement line. Off by default: it is
         /// a diagnostic, not part of the playfield. See <see cref="Plugin.FrameRateText"/>.
         /// </summary>
@@ -261,23 +273,6 @@ namespace LaneReader
         /// untouched.
         /// </summary>
         public bool ThreeDLanes = false;
-
-        /// <summary>
-        /// Which of the two 3D renderers to use.
-        ///
-        /// true (the default) draws the playfield exactly as the flat view does - one rectangle per
-        /// lane, one per note, one per hold copy - and puts the whole 3D into ONE projective matrix on
-        /// <see cref="UnityEngine.GUI.matrix"/> (see Plugin.WarpMatrix). The floor is a plane, so a
-        /// pinhole camera maps it to the screen with a single homography, and the GPU does the rest:
-        /// true trapezoids with straight edges, no bands, no seams, and a custom sprite interpolated
-        /// across the plate the way any textured quad is.
-        ///
-        /// false keeps the older renderer, which approximates each trapezoid with a stack of
-        /// axis-aligned rectangles. It is the fallback: a projective GUI matrix is not something Unity
-        /// documents, so if 3D comes out wrong (blank, or the whole overlay somewhere off screen),
-        /// switch this off and the bands come back.
-        /// </summary>
-        public bool ThreeDWarp = true;
 
         /// <summary>
         /// How close the camera is: eye = lane length / strength, i.e. a note has shrunk to half size

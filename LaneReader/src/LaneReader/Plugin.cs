@@ -278,6 +278,9 @@ namespace LaneReader
                     {
                         ColourRow("轨道边框色", ref Cfg.LaneEdgeColour);
                     }
+                    Slider("边框粗细 (px)", ref Cfg.LaneEdgePx, 1f, 12f, "F0");
+                    GUILayout.Label("边框就是轨道两侧那条线。3D 下轨道体是一叠横带拼的，边线盖住的");
+                    GUILayout.Label("横带台阶越多，边看着越干净——所以锯齿明显时先把这里调粗试试。");
                   }
                 }
 
@@ -425,32 +428,14 @@ namespace LaneReader
                 if (Cfg.ThreeDLanes)
                 {
                     Slider("透视强度", ref Cfg.ThreeDStrength, 0.3f, 3f, "F2");
-
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("透视算法", GUILayout.Width(LabelWidth));
-                    if (GUILayout.Button(Cfg.ThreeDWarp ? "投影变换（推荐）" : "横带（旧）",
-                            GUILayout.Width(200f)))
-                        Cfg.ThreeDWarp = !Cfg.ThreeDWarp;
-                    GUILayout.EndHorizontal();
-                    if (Cfg.ThreeDWarp)
-                    {
-                        GUILayout.Label("把整个 3D 收进一个投影矩阵：轨道/音符/长按都只画一块矩形，由显卡");
-                        GUILayout.Label("做透视。所以边缘是真正的直线（不再是一格一格的横带），轨道里不会");
-                        GUILayout.Label("有接缝和白线，自定义图片也会被正确地透视拉伸。");
-                        GUILayout.Label("如果 3D 显示不出来或整体错位，说明这台机器的 IMGUI 不接受投影矩阵，");
-                        GUILayout.Label("把上面切成「横带（旧）」即可——那种情况请告诉我。");
-                    }
-                    else
-                    {
-                        GUILayout.Label("旧算法：每个梯形用一叠轴对齐的横带拼出来（横带精确拼接、按自己");
-                        GUILayout.Label("远边的宽度内切，不会露出锯齿），自定义图片按横带切片贴上去。");
-                        GUILayout.Label("它是投影变换的备用方案，效果比它糙一些。");
-                    }
-
                     GUILayout.Label("灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；");
                     GUILayout.Label("音符越靠近灭点越窄越矮，越靠近判定线越大越快。判定线/判定框/标签都在");
                     GUILayout.Label("判定线这一端，不受影响。强度 = 判定线到「缩到一半」的距离的倒数：");
                     GUILayout.Label("1.00 时音符在判定线附近的屏幕速度和关掉 3D 时一样。");
+                    GUILayout.Label("轨道体是一叠横带拼出来的（IMGUI 只能填轴对齐矩形），两侧边线是真的直线；");
+                    GUILayout.Label("把「外观 / 颜色 → 轨道 → 边框粗细」调粗一点，边线就能把横带的台阶盖住，");
+                    GUILayout.Label("锯齿会更不明显（默认已经比上一版粗 1px）。");
+                    GUILayout.Label("（试过用投影矩阵让显卡直接做透视，IMGUI 不接受那个用法，已删。）");
                 }
 
                 Toggle("长按（hold）支持", ref Cfg.HoldSupport);
@@ -1287,34 +1272,20 @@ namespace LaneReader
             field.Top = laneTop;
             field.NoteH = noteH;
 
-            // ---- the warp: the whole 3D as one matrix ----------------------------
-            // See WarpMatrix. With the warp on, the playfield is drawn exactly as the flat view draws
-            // it and the GPU projects it, so `Draw` is the identity view while `View` stays the pinhole
-            // camera the culls and the horizon are measured with.
-            bool warp = Cfg.ThreeDLanes && Cfg.ThreeDWarp;
-            Matrix4x4 outer = GUI.matrix;
-            Matrix4x4 warped = outer;
-            if (warp)
-                warped = outer * WarpMatrix(field.View, cx, judgeY);
-
-            field.Draw = warp ? View.Make(false, judgeY, laneLen) : field.View;
-
-            // The warped lane body has to run to the VANISHING POINT, which is the flat fall distance
-            // the homography maps to (almost) the whole lane length - the flat lane top would only
-            // reach 55% of the way up the screen and leave the lane ending in mid-air.
-            float drawLaneLen = warp ? field.View.Eye * 999f : laneLen;
-            float drawLaneTop = judgeY - drawLaneLen;
+            // How thick a lane edge is. It matters more than it looks: under 3D the body is a stack
+            // of bands inscribed in the true triangle, so the edge line drawn on that triangle is
+            // what defines the silhouette, and a thicker line hides more of the band staircase.
+            float laneEdge = Mathf.Max(1f, Cfg.LaneEdgePx * refScale);
 
             // ---- lanes ----------------------------------------------------------
             if (!timeOnly && Cfg.ShowLanes)
             {
-                if (Cfg.ThreeDLanes && !warp)
+                if (Cfg.ThreeDLanes)
                 {
-                    DrawLanes3D(field);
+                    DrawLanes3D(field, laneEdge);
                 }
                 else
                 {
-                    GUI.matrix = warped;
                     for (int i = 0; i < FingeringPlanner.FingerCount; i++)
                     {
                         Matrix4x4 laneMatrix = GUI.matrix;
@@ -1323,19 +1294,13 @@ namespace LaneReader
                                 PetalRoot(cx, judgeY));
 
                         float x = LaneX(i, x0, laneW, laneGap, cx) + LaneWanderX(i);
-                        float y = drawLaneTop + LaneWanderY(i);
-                        Fill(new Rect(x, y, laneW, drawLaneLen),
-                            Fade(LaneBodyColour(i), Cfg.LaneOpacity));
-
-                        // The border is a strip of its own width inside the lane, in flat pixels: the
-                        // warp turns it into the lane's converging edge, and it gets thinner towards
-                        // the vanishing point exactly like a real strip on the floor does.
+                        float y = laneTop + LaneWanderY(i);
+                        Fill(new Rect(x, y, laneW, laneLen), Fade(LaneBodyColour(i), Cfg.LaneOpacity));
                         Color edge = LaneEdgeColour(i);
-                        Fill(new Rect(x, y, 2f, drawLaneLen), edge);
-                        Fill(new Rect(x + laneW - 2f, y, 2f, drawLaneLen), edge);
+                        Fill(new Rect(x, y, laneEdge, laneLen), edge);
+                        Fill(new Rect(x + laneW - laneEdge, y, laneEdge, laneLen), edge);
                         GUI.matrix = laneMatrix;
                     }
-                    GUI.matrix = outer;
                 }
             }
 
@@ -1344,13 +1309,7 @@ namespace LaneReader
             // they are a reading aid, not a playfield element. They scroll with the clock, so the
             // pre-start prompt (which draws the frame only) leaves them out.
             if (drawNotes && Cfg.ShowBeatLines && Chart.Ready)
-            {
-                // The grid is part of the floor, so under the warp it is drawn in flat space and
-                // projected with everything else: the lines converge and thin out on their own.
-                GUI.matrix = warped;
                 DrawBeatLines(field, refScale, w, x0, total, judgeY, laneTop, speed, noteH, now, mix);
-                GUI.matrix = outer;
-            }
 
             // ---- judgement line -------------------------------------------------
             // Full width by default; a shorter one is centred on the playfield rather than on the
@@ -1443,9 +1402,7 @@ namespace LaneReader
             // ---- notes ----------------------------------------------------------
             // In petal mode the notes are drawn once per lane, inside that lane's rotation, so each
             // petal's notes fall outward along their own petal. Otherwise this is one pass over them
-            // all. The single-pass case is byte-for-byte what it always was. Under the warp the whole
-            // loop draws in flat space and the matrix projects it.
-            GUI.matrix = warped;
+            // all. The single-pass case is byte-for-byte what it always was.
             int passes = Cfg.FunPetals ? FingeringPlanner.FingerCount : 1;
             for (int pass = 0; pass < passes; pass++)
             {
@@ -1613,23 +1570,15 @@ namespace LaneReader
                 Color popEdge = Fade(edge, fade);
 
                 // Bottom edge welded to the bottom of the judgement box, so the note grows
-                // upward and never drifts off the line as its size changes. The pop is drawn in
-                // SCREEN space even under the warp: it is feedback on the judgement line, and the
-                // warp is the identity all along that line anyway - only its top two pixels would
-                // change, and they are the note's own plate, not the floor.
-                Matrix4x4 popMatrix = GUI.matrix;
-                GUI.matrix = outer;
+                // upward and never drifts off the line as its size changes.
                 FillNote(new Rect(x + (laneW - w2) * 0.5f, boxBottom - h2, w2, h2),
                     pop, popEdge, refScale);
-                GUI.matrix = popMatrix;
                 continue;
                 }
 
                 if (Cfg.FunPetals)
                     GUI.matrix = laneMatrix;
             }
-
-            GUI.matrix = outer;
         }
 
         /// <summary>
@@ -1955,56 +1904,11 @@ namespace LaneReader
             }
         }
 
-        /// <summary>
-        /// The whole 3D view as one 2D homography, applied through <see cref="GUI.matrix"/>.
-        ///
-        /// The overlay draws on a plane - the floor the lanes lie on - and a pinhole camera maps a
-        /// plane to the screen with a single projective transform. So the entire "3D" is one 4x4:
-        /// everything is drawn exactly as the flat view draws it (one rectangle per lane, per note,
-        /// per hold copy) and the GPU projects it, which is what a perspective transform is for. The
-        /// trapezoids come out as true trapezoids with straight edges, a custom sprite is interpolated
-        /// across the plate exactly like any textured quad, and there are no bands left to leave
-        /// seams, steps or doubled alpha behind. It is also far cheaper: a lane is one quad instead of
-        /// ninety-six.
-        ///
-        /// In flat overlay coordinates (x across the lanes, y downward, judgement line at judgeY) a
-        /// point d pixels of fall above the line is y = judgeY - d, and the camera puts it at
-        /// <code>
-        ///     rise(d)  = len * d / (d + eye)      above the judgement line
-        ///     scale(d) = eye / (d + eye)          times its flat width
-        /// </code>
-        /// (the same pair as <see cref="View"/>). Both are rational in d with the same denominator, so
-        /// the map is projective:
-        /// <code>
-        ///     X = eye*x - cx*y + cx*judgeY
-        ///     Y = judgeY*(judgeY + eye - len) + y*(len - judgeY)
-        ///     W = judgeY + eye - y
-        /// </code>
-        /// and (X/W, Y/W) is the projected point. Two properties worth knowing:
-        ///
-        ///   * along the judgement line (y = judgeY) it is exactly the identity, so the line, its
-        ///     boxes, the key labels and the strike pop do not move at all when 3D is switched on;
-        ///   * a point infinitely far up the lane (y to minus infinity) lands on (cx, judgeY - len),
-        ///     which is the vanishing point the lane length setting defines.
-        ///
-        /// W stays positive for every point the overlay draws (the lowest one is half a note below the
-        /// line, W = eye - noteH/2), so nothing is behind the camera and no vertex is clipped away.
-        /// </summary>
-        private static Matrix4x4 WarpMatrix(View view, float cx, float judgeY)
-        {
-            if (view.Flat)
-                return Matrix4x4.identity;
-
-            float eye = view.Eye;
-            float len = view.LineLen;
-
-            var m = new Matrix4x4();
-            m.m00 = eye; m.m01 = -cx; m.m03 = cx * judgeY;
-            m.m10 = 0f; m.m11 = len - judgeY; m.m13 = judgeY * (judgeY + eye - len);
-            m.m20 = 0f; m.m21 = 0f; m.m22 = 1f; m.m23 = 0f;   // z stays 0: ordinary 2D depth/clipping
-            m.m30 = 0f; m.m31 = -1f; m.m33 = judgeY + eye;
-            return m;
-        }
+        // 2026-10-10：这里曾经有过一个 WarpMatrix —— 把整个 3D 收进一个投影矩阵塞进 GUI.matrix，
+        // 让显卡把平面视图直接投影成 3D（边缘会是真正的直线、没有横带、没有接缝、图片透视插值也对）。
+        // 数学是对的（tools/WarpCheck 当年验过 19200 个点，0 误差），但实机用不了：Unity 的 IMGUI
+        // 不接受投影矩阵（那不是文档化的用法），3D 整个画不出来。代码已删，别再试这条路；
+        // 记住结论就行：IMGUI 只有仿射变换可用。
 
         /// <summary>
         /// Where the four lanes are, in one value. The note, trail and hold-bar helpers all need the
@@ -2020,8 +1924,7 @@ namespace LaneReader
             public float JudgeY;    // the judgement line
             public float Top;       // the lane top, i.e. the vanishing point's height
             public float NoteH;     // a note's flat height
-            public View View;       // the projection everything is MEASURED with (culls, horizon)
-            public View Draw;       // the projection things are PLACED with
+            public View View;       // the projection: rise/scale and the horizon everything uses
 
             /// <summary>A lane's flat centre line, before the perspective is applied.</summary>
             public float SlotCentre(int lane)
@@ -2131,7 +2034,7 @@ namespace LaneReader
             // caller asks for a band every couple of pixels of the plate's projected height instead,
             // which is what makes the picture look like the one tapered plate it is. A flat plate is a
             // rectangle, so it stays one band.
-            bands = field.Draw.Flat ? 1 : Mathf.Clamp(bands, 2, 24);
+            bands = field.View.Flat ? 1 : Mathf.Clamp(bands, 2, 24);
             float b = Mathf.Max(1f, Cfg.NoteBorderPx * refScale);
             float wanderX = LaneWanderX(lane);
             float wanderY = LaneWanderY(lane);
@@ -2139,8 +2042,8 @@ namespace LaneReader
 
             // Where the plate's own near and far edges land, and whether its outline fits at all. This
             // belongs to the PLATE, not to a band: see the class comment above.
-            float plateTop = field.Draw.JudgeY - field.Draw.Rise(dFar) + wanderY;
-            float plateBottom = field.Draw.JudgeY - field.Draw.Rise(dNear) + wanderY;
+            float plateTop = field.View.JudgeY - field.View.Rise(dFar) + wanderY;
+            float plateBottom = field.View.JudgeY - field.View.Rise(dNear) + wanderY;
             bool border = bordered && Cfg.ShowNoteBorder
                 && flatWidth > b * 2f && plateBottom - plateTop > b * 2f;
 
@@ -2149,13 +2052,13 @@ namespace LaneReader
                 float d0 = dNear + span * band / bands;
                 float d1 = dNear + span * (band + 1) / bands;
 
-                float top = field.Draw.JudgeY - field.Draw.Rise(d1) + wanderY;
-                float bottom = field.Draw.JudgeY - field.Draw.Rise(d0) + wanderY;
+                float top = field.View.JudgeY - field.View.Rise(d1) + wanderY;
+                float bottom = field.View.JudgeY - field.View.Rise(d0) + wanderY;
                 float height = bottom - top;
                 if (height <= 0f)
                     continue;
 
-                float p = field.Draw.Scale((d0 + d1) * 0.5f);
+                float p = field.View.Scale((d0 + d1) * 0.5f);
                 float width = Mathf.Max(1f, flatWidth * p);
                 float centre = field.Centre(lane, p) + wanderX;
 
@@ -2203,11 +2106,8 @@ namespace LaneReader
         /// Draws one straight lane edge: a rotated rectangle from the lane's base corner up to the
         /// vanishing point. An axis-aligned rectangle is all IMGUI can fill, and a rotated one is
         /// exactly the line it needs to be - unlike the stack of horizontal bands the body is made of,
-        /// which leaves a one-pixel sawtooth on every step and is what read as aliasing.
-        ///
-        /// This is the banded renderer's edge. The warp renderer does not use it at all: there the
-        /// lane's border is a flat strip in the same homography as the lane, so it is projected by the
-        /// GPU like everything else.
+        /// which leaves a one-pixel sawtooth on every step and is what read as aliasing. The line's
+        /// thickness is the "lane border" setting, and a thicker line hides more of that sawtooth.
         /// </summary>
         private static void DrawEdgeLine(float x0, float y0, float x1, float y1, float thickness,
             Color colour)
@@ -2245,10 +2145,12 @@ namespace LaneReader
         ///     sawtooth that was still visible after the edges became real lines.
         ///
         /// The two EDGES are not bands: each is one rotated rectangle running from the lane's base
-        /// corner to the shared apex, which is exact, drawn with a soft cross-section (see
-        /// DrawEdgeLine).
+        /// The two EDGES are not bands: each is one rotated rectangle running from the lane's base
+        /// corner to the shared apex, which is exact. They are the lane's silhouette, and they are
+        /// drawn at the "lane border" thickness the player sets - a thicker line covers more of the
+        /// band staircase above, which is the cheapest way to make 3D look clean.
         /// </summary>
-        private static void DrawLanes3D(Field field)
+        private static void DrawLanes3D(Field field, float edgePx)
         {
             const int Bands = 96;
 
@@ -2297,8 +2199,8 @@ namespace LaneReader
                 float half = field.Width * 0.5f;
                 float baseCentre = field.Centre(i, 1f) + wanderX;
                 float apexY = field.Top + wanderY;
-                DrawEdgeLine(baseCentre - half, baseY, apexX, apexY, 2f, line);
-                DrawEdgeLine(baseCentre + half, baseY, apexX, apexY, 2f, line);
+                DrawEdgeLine(baseCentre - half, baseY, apexX, apexY, edgePx, line);
+                DrawEdgeLine(baseCentre + half, baseY, apexX, apexY, edgePx, line);
 
                 GUI.matrix = laneMatrix;
             }
@@ -2379,12 +2281,11 @@ namespace LaneReader
 
                 // Under 3D the sides of the bar converge, so it needs bands to follow them; enough
                 // that a band is about six pixels tall, which is where the steps stop showing. Flat,
-                // the bar is a rectangle and one band is the whole truth. With the warp on there is
-                // nothing to follow: the matrix projects the one rectangle.
+                // the bar is a rectangle and one band is the whole truth.
                 int bands = 1;
-                if (!field.Draw.Flat)
+                if (!field.View.Flat)
                 {
-                    float height = field.Draw.Rise(to) - field.Draw.Rise(from);
+                    float height = field.View.Rise(to) - field.View.Rise(from);
                     bands = Mathf.Clamp(Mathf.CeilToInt(height / 6f), 2, 48);
                 }
 
@@ -2392,18 +2293,18 @@ namespace LaneReader
                 {
                     float d0 = from + (to - from) * band / bands;
                     float d1 = from + (to - from) * (band + 1) / bands;
-                    float rise0 = field.Draw.Rise(d0);
-                    float rise1 = field.Draw.Rise(d1);
+                    float rise0 = field.View.Rise(d0);
+                    float rise1 = field.View.Rise(d1);
                     float height = rise1 - rise0;
                     if (height <= 0f)
                         continue;
 
-                    float p = field.Draw.Scale((d0 + d1) * 0.5f);
+                    float p = field.View.Scale((d0 + d1) * 0.5f);
                     float width = Mathf.Max(1f, (field.Width - 4f) * fraction * p);
                     float centre = field.Centre(lane, p) + wanderX;
 
                     // The band's top edge is the farther end of it, i.e. the bigger rise.
-                    Rect r = new Rect(centre - width * 0.5f, field.Draw.JudgeY - rise1 + wanderY,
+                    Rect r = new Rect(centre - width * 0.5f, field.View.JudgeY - rise1 + wanderY,
                         width, height);
 
                     if (image != null)
@@ -2474,11 +2375,11 @@ namespace LaneReader
         /// line exactly on its beat, and it is only drawn from <paramref name="laneTop"/> downwards -
         /// the same top edge the notes appear at.
         ///
-        /// Under 3D that top edge is the vanishing point, which is infinitely far away, so the banded
-        /// renderer bounds the grid by readability instead of by the lane: a line closer than
-        /// <see cref="MinBeatGap"/> to the one before it - and therefore every line beyond it - is
-        /// dropped, because past that point the beats are a single white sheet. The warp renderer needs
-        /// no such bound: it projects the lines with everything else and they thin out on their own.
+        /// Under 3D that top edge is the vanishing point, which is infinitely far away, so the grid is
+        /// bounded by readability instead of by the lane: a line closer than <see cref="MinBeatGap"/>
+        /// to the one before it - and therefore every line beyond it - is dropped, because past that
+        /// point the beats are one white sheet. What is drawn keeps its full strength: fading the far
+        /// lines out made them look missing.
         /// </summary>
         private static void DrawBeatLines(Field field, float refScale, float screenW, float x0, float total,
             float judgeY, float laneTop, float speed, float noteH, double now, float mix)
@@ -2524,40 +2425,34 @@ namespace LaneReader
                 float alpha = Mathf.Clamp01(ink.a * Cfg.BeatLineAlpha * (bar ? 1.8f : 1f)) * mix;
 
                 float fall = (float)((line.Time - now) * speed);
-                float y = judgeY - field.Draw.Rise(fall);
+                float y = judgeY - field.View.Rise(fall);
 
-                // Lines are walked in time order, so their height only increases. The lane's own far
-                // end - where the playfield stops being visible - ends the walk. That bound is a
-                // SCREEN height (laneTop is the lane length above the judgement line), which under the
-                // warp is the projected height and not the flat one: comparing the flat fall against it
-                // would cut the grid off halfway up the lane at low perspective strengths.
-                float screenRise = field.View.Rise(fall);
-                if (screenRise > judgeY - laneTop)
+                // Lines are walked in time order and y only decreases, so the first one above the
+                // lane top ends the loop.
+                if (y < laneTop)
                     break;
 
                 // Under 3D the line is only as wide as the lane group is at that height, unless it
-                // was asked to span the whole screen anyway. With the warp on the line is drawn flat
-                // and the matrix narrows it, so there is nothing to scale here (scale is 1).
+                // was asked to span the whole screen anyway.
                 float lineLeft = left;
                 float lineWidth = width;
-                float scale = field.Draw.Scale(fall);
+                float scale = field.View.Scale(fall);
                 if (!Cfg.BeatLineFullWidth && scale != 1f)
                 {
                     lineLeft = cx + (x0 - cx) * scale;
                     lineWidth = total * scale;
                 }
 
-                // Banded 3D only: the grid is walked in time order towards the vanishing point, where
+                // Under 3D the grid is walked in time order towards the vanishing point, where
                 // consecutive lines end up a pixel apart and read as one white sheet. Once two lines
                 // are on top of each other, so is every line after them, so the walk stops there. What
                 // is drawn keeps its full strength - fading the far lines out made them look missing,
                 // which is not what a reading aid should do.
-                if (Cfg.ThreeDLanes && !Cfg.ThreeDWarp)
+                if (Cfg.ThreeDLanes)
                 {
-                    float screenY = judgeY - field.View.Rise(fall);
-                    if (!float.IsNaN(previousY) && previousY - screenY < MinBeatGap)
+                    if (!float.IsNaN(previousY) && previousY - y < MinBeatGap)
                         break;
-                    previousY = screenY;
+                    previousY = y;
                 }
 
                 Fill(new Rect(lineLeft, y, lineWidth, thick), new Color(ink.r, ink.g, ink.b, alpha));
