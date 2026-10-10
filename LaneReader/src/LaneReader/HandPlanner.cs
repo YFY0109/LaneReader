@@ -110,7 +110,7 @@ namespace LaneReader
         public static HandPlan Assign(IList<double> hitTimes, double levelBpm,
             double maxHardResistBpm, int handKeys, bool outerRoll)
         {
-            return Assign(hitTimes, levelBpm, maxHardResistBpm, handKeys, outerRoll, null, null);
+            return Assign(hitTimes, levelBpm, maxHardResistBpm, handKeys, outerRoll, null);
         }
 
         /// <summary>
@@ -127,25 +127,6 @@ namespace LaneReader
         /// </summary>
         public static HandPlan Assign(IList<double> hitTimes, double levelBpm,
             double maxHardResistBpm, int handKeys, bool outerRoll, int[] holdHead)
-        {
-            return Assign(hitTimes, levelBpm, maxHardResistBpm, handKeys, outerRoll, holdHead, null);
-        }
-
-        /// <summary>
-        /// The same, with the notes' lengths handed in instead of measured from the clock.
-        /// <paramref name="degrees"/> is indexed like <paramref name="hitTimes"/> and holds the
-        /// rotation from that entry to the next one, in degrees (180 = one beat). When it is null the
-        /// length is derived from the times as above.
-        ///
-        /// This is the better route whenever the caller can get the lengths: the caller feeds real
-        /// seconds, so the clock route has to divide them back into beats with a BPM, and the BPM it
-        /// has is the level's own - which every speed event moves. The degrees route measures the
-        /// chart's own geometry instead, so a triplet is a third of a beat whether the chart is at 80
-        /// or 300 BPM, and the hand rule's bands stay where its documentation says they are.
-        /// </summary>
-        public static HandPlan Assign(IList<double> hitTimes, double levelBpm,
-            double maxHardResistBpm, int handKeys, bool outerRoll, int[] holdHead,
-            IList<double> degrees)
         {
             var plan = new HandPlan();
             if (hitTimes == null || hitTimes.Count == 0)
@@ -165,11 +146,11 @@ namespace LaneReader
             {
                 // One window: notes until the accumulated length covers a normalised beat. The
                 // reference's loop is a do/while, so a window always holds at least one note.
-                double degree = DegreeAt(hitTimes, degrees, first, baseBpm);
+                double degree = DegreeOf(hitTimes, first, baseBpm);
                 int window = 1;
                 while (degree < DegreesPerBeat - RoundOff && first + window < count)
                 {
-                    degree += DegreeAt(hitTimes, degrees, first + window, baseBpm);
+                    degree += DegreeOf(hitTimes, first + window, baseBpm);
                     window++;
                 }
 
@@ -207,9 +188,8 @@ namespace LaneReader
                 }
             }
 
-            plan.Summary = string.Format("windows {0}, {1}, base {2:F2}bpm, degrees {3}",
-                plan.WindowCount.Count, plan.Histogram(), baseBpm,
-                degrees != null ? "from tile rotation (180 = 1 beat)" : "from the clock");
+            plan.Summary = string.Format("windows {0}, {1}, base {2:F2}bpm",
+                plan.WindowCount.Count, plan.Histogram(), baseBpm);
             if (forced > 0)
                 plan.Summary += string.Format(", hold releases forced {0}", forced);
             return plan;
@@ -239,20 +219,6 @@ namespace LaneReader
             if (maxHardResistBpm > 0.0 && bpm > maxHardResistBpm)
                 bpm /= 2.0;
             return bpm;
-        }
-
-        /// <summary>
-        /// The length of one entry: the degrees handed in when there are any, the clock otherwise
-        /// (see <see cref="DegreeOf"/>). A negative entry counts as zero - two entries on one instant.
-        /// </summary>
-        private static double DegreeAt(IList<double> hitTimes, IList<double> degrees, int note, double baseBpm)
-        {
-            if (degrees != null && note >= 0 && note < degrees.Count)
-            {
-                double d = degrees[note];
-                return d < 0.0 ? 0.0 : d;
-            }
-            return DegreeOf(hitTimes, note, baseBpm);
         }
 
         /// <summary>

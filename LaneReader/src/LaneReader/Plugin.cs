@@ -390,29 +390,10 @@ namespace LaneReader
 
                 if (Cfg.FingeringMode == 1)
                 {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("度的标尺", GUILayout.Width(LabelWidth));
-                    if (GUILayout.Button(Cfg.HandDegreesFromBeats ? "一拍 = 180°（推荐）"
-                            : "参考实现 baseBpm", GUILayout.Width(200f)))
-                        Cfg.HandDegreesFromBeats = !Cfg.HandDegreesFromBeats;
-                    GUILayout.EndHorizontal();
-                    if (Cfg.HandDegreesFromBeats)
-                    {
-                        GUILayout.Label("窗口 = 一拍，3 分音正好一个窗口（1+2 指分组）。");
-                        GUILayout.Label("与谱面 BPM / SetSpeed 都无关，BPM 读不到也不影响手序。");
-                    }
-                    else
-                    {
-                        GUILayout.Label("参考实现原样：度 = 180·秒·baseBpm/60，低 BPM 谱上");
-                        GUILayout.Label("窗口会缩成 1/2..1/8 拍，容易变成主手一根手指连打。");
-                    }
-
                     Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
                     GUILayout.Label("超过它就减半一次窗口（参考实现原样；越低越偏轮指）。");
                     GUILayout.Label("读不到谱面 BPM 时基准是 800：设成 850 就不减半（base 800），");
                     GUILayout.Label("设成 506 会减半（base 400，轮指更多）。");
-                    if (Cfg.HandDegreesFromBeats)
-                        GUILayout.Label("（「一拍 = 180°」标尺下它只进日志，不再影响手序。）");
                     GUILayout.BeginHorizontal();
                     GUILayout.Label("轮指方向", GUILayout.Width(LabelWidth));
                     if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
@@ -912,9 +893,7 @@ namespace LaneReader
             // Re-plan only when a fingering input actually changed, not every frame. HoldSupport is
             // part of the fingerprint because it decides whether the releases are fed in at all: a
             // toggle that changes the plan but not the fingerprint would leave the old lanes in place.
-            double fingerprint = Chart.Generation * 10000000.0
-                                 + (Cfg.HandDegreesFromBeats ? 1.0 : 2.0) * 1000000.0
-                                 + Cfg.RollWindowMs * 100.0
+            double fingerprint = Chart.Generation * 1000000.0 + Cfg.RollWindowMs * 100.0
                                  + Cfg.FingeringMode * 100000000.0 + Cfg.MaxHardResistBpm
                                  + (Cfg.OuterRoll ? 1.0 : 2.0)
                                  + (Cfg.HoldSupport ? 4.0 : 8.0);
@@ -997,22 +976,11 @@ namespace LaneReader
             var times = new List<double>(notes.Count);
             var holdHead = new List<int>(notes.Count);
             var noteOfEntry = new List<int>(notes.Count);
-
-            // The notes' own lengths, in degrees of the chart's rotation (180 = one beat), one per
-            // entry. This is the scale the reference's hand rule is written against - a window is one
-            // beat, and "four beats or more goes back to the main hand" is 720 - and it needs no BPM,
-            // so the fingering no longer moves when the level BPM cannot be read or when a SetSpeed
-            // event changes the tempo. ComputeBeats has already worked the length of every tile out;
-            // see Settings.HandDegreesFromBeats for the other scale and why it is offered.
-            var degrees = Cfg.HandDegreesFromBeats ? new List<double>(notes.Count) : null;
-
             for (int i = 0; i < notes.Count; i++)
             {
                 times.Add(notes[i].HitTime);
                 holdHead.Add(-1);
                 noteOfEntry.Add(i);
-                if (degrees != null)
-                    degrees.Add(notes[i].Beats * 180.0);
 
                 if (!Cfg.HoldSupport || notes[i].HoldSeconds <= 0.0)
                     continue;
@@ -1021,14 +989,7 @@ namespace LaneReader
                 times.Add(notes[i].HitTime + notes[i].HoldSeconds);
                 holdHead.Add(head);
                 noteOfEntry.Add(i);
-                if (degrees != null)
-                    degrees.Add(0.0);                     // the release lands on the next press
             }
-
-            // The last entry has no next entry to be measured against, so it takes the length before
-            // it - the same thing the reference's duplicated final angle does.
-            if (degrees != null && degrees.Count > 1)
-                degrees[degrees.Count - 1] = degrees[degrees.Count - 2];
 
             // The original port's source, and deliberately so. scrLevelMaker.bpm_forUnityUseOnly is
             // not readable on this install, so this hands HandPlanner a 0 and leaves its own fallback
@@ -1037,7 +998,7 @@ namespace LaneReader
             // Substituting a BPM guessed from the note spacing here silently re-scaled every chart.
             double bpm = Chart.LevelBpm();
             HandPlan plan = HandPlanner.Assign(times, bpm, Cfg.MaxHardResistBpm,
-                2, Cfg.OuterRoll, Cfg.HoldSupport ? holdHead.ToArray() : null, degrees);
+                2, Cfg.OuterRoll, Cfg.HoldSupport ? holdHead.ToArray() : null);
 
             // Only the presses get a lane back; a release rides along with its head and is not drawn
             // as its own note (the hold's bar marks where it is).

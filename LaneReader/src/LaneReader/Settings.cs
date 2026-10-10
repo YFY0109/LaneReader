@@ -408,27 +408,6 @@ namespace LaneReader
         /// </summary>
         public bool OuterRoll = true;
 
-        /// <summary>
-        /// How the hand-split planner measures a note's length. That measurement is what decides the
-        /// windows and therefore the whole fingering.
-        ///
-        /// true (the default): one beat is 180 degrees, so a note's degree is its own length in beats.
-        /// That is what the reference implementation's rule is written against - a window is one beat,
-        /// and "four beats or more returns to the main hand" is 720 degrees. It is what makes a
-        /// triplet come out as one window of three notes (1 + 2 fingers) instead of three separate
-        /// one-finger taps, and it does not move when the chart changes speed.
-        ///
-        /// false: the reference implementation's own arithmetic, 180 * seconds * baseBpm / 60, with
-        /// baseBpm the level BPM doubled up until it is above 550. That multiplies every degree by
-        /// baseBpm / levelBpm (2x, 4x, 8x - the lower the BPM, the more), which shrinks the window and
-        /// the hand rule's four bands by the same factor. On the 80 BPM test chart a window is only an
-        /// eighth of a beat, so every tile of half a beat or more falls in the "return to the main
-        /// hand" band and the same finger repeats, while only subdivisions finer than a triplet ever
-        /// switch hands - and a SetSpeed event moves all four bands again. Kept because it is what the
-        /// macro's code does and what the mod played with before this switch existed.
-        /// </summary>
-        public bool HandDegreesFromBeats = true;
-
         public bool DebugLog = true;
 
         private static string PathFor(UnityModManager.ModEntry modEntry)
