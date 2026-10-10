@@ -383,10 +383,10 @@ namespace LaneReader
                 GUILayout.Label("轨道顺序: D  F  J  K");
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("手法", GUILayout.Width(LabelWidth));
-                if (GUILayout.Button(Cfg.FingeringMode == 1 ? "拆手序" : "AdoFalling 原版",
-                        GUILayout.Width(160f)))
-                    Cfg.FingeringMode = Cfg.FingeringMode == 1 ? 0 : 1;
+                if (GUILayout.Button(FingeringName(Cfg.FingeringMode), GUILayout.Width(160f)))
+                    Cfg.FingeringMode = (Cfg.FingeringMode + 1) % 3;
                 GUILayout.EndHorizontal();
+                GUILayout.Label("点一下换一种：原版 → 拆手序（参考移植）→ 时间重置法。");
 
                 if (Cfg.FingeringMode == 1)
                 {
@@ -394,6 +394,20 @@ namespace LaneReader
                     GUILayout.Label("超过它就减半一次窗口（参考实现原样；越低越偏轮指）。");
                     GUILayout.Label("读不到谱面 BPM 时基准是 800：设成 850 就不减半（base 800），");
                     GUILayout.Label("设成 506 会减半（base 400，轮指更多）。");
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("轮指方向", GUILayout.Width(LabelWidth));
+                    if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
+                            GUILayout.Width(160f)))
+                        Cfg.OuterRoll = !Cfg.OuterRoll;
+                    GUILayout.EndHorizontal();
+                }
+                else if (Cfg.FingeringMode == 2)
+                {
+                    Slider("主手重置间隔 (毫秒)", ref Cfg.ResetMs, 60f, 800f, "F0");
+                    GUILayout.Label("只看音符间隔，不看谱面 BPM。");
+                    GUILayout.Label("超过它 = 单指慢慢点；一半到它之间 = 主手强拍、副手弱拍；");
+                    GUILayout.Label("小于一半 = 主手轮指，更密 = 双手轮指。");
+                    GUILayout.Label("长条的尾音永远跟在头的那条轨道上。");
                     GUILayout.BeginHorizontal();
                     GUILayout.Label("轮指方向", GUILayout.Width(LabelWidth));
                     if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
@@ -895,13 +909,16 @@ namespace LaneReader
             // toggle that changes the plan but not the fingerprint would leave the old lanes in place.
             double fingerprint = Chart.Generation * 1000000.0 + Cfg.RollWindowMs * 100.0
                                  + Cfg.FingeringMode * 100000000.0 + Cfg.MaxHardResistBpm
+                                 + Cfg.ResetMs * 10.0
                                  + (Cfg.OuterRoll ? 1.0 : 2.0)
                                  + (Cfg.HoldSupport ? 4.0 : 8.0);
             if (fingerprint == _planFingerprint)
                 return;
 
             _planFingerprint = fingerprint;
-            if (Cfg.FingeringMode == 1)
+            if (Cfg.FingeringMode == 2)
+                ApplyTimeReset();
+            else if (Cfg.FingeringMode == 1)
                 ApplyHandSplit();
             else
                 ApplyAdoFalling();
@@ -957,6 +974,31 @@ namespace LaneReader
                 Chart.Count, _plan.Rolls, _plan.Taps, _plan.WindowMs,
                 _plan.LaneUse[(int)Finger.LeftMiddle], _plan.LaneUse[(int)Finger.LeftIndex],
                 _plan.LaneUse[(int)Finger.RightIndex], _plan.LaneUse[(int)Finger.RightMiddle]));
+        }
+
+        /// <summary>Panel label for a fingering mode.</summary>
+        private static string FingeringName(int mode)
+        {
+            switch (mode)
+            {
+                case 2: return "时间重置法";
+                case 1: return "拆手序（参考移植）";
+                default: return "AdoFalling 原版";
+            }
+        }
+
+        /// <summary>
+        /// The time-reset planner: note intervals only, no BPM anywhere. See
+        /// <see cref="TimeResetPlanner"/> for the rules. It lanes the holds as well as the presses,
+        /// so there is no release entry to feed in and nothing for ForceHoldTails to fix - that pass
+        /// still runs and simply confirms what the planner already did.
+        /// </summary>
+        private static void ApplyTimeReset()
+        {
+            TimeResetPlanner.Result plan = TimeResetPlanner.Assign(
+                Chart.Notes, Cfg.ResetMs, Cfg.OuterRoll, Cfg.HoldSupport);
+
+            Logger.Log("time reset: " + plan.Summary);
         }
 
         /// <summary>

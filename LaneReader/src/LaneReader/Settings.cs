@@ -403,6 +403,17 @@ namespace LaneReader
         public float MaxHardResistBpm = 850f;
 
         /// <summary>
+        /// The time-reset planner's one parameter: the main-hand reset interval, in milliseconds.
+        /// Only read while <see cref="FingeringMode"/> is 2. See <see cref="TimeResetPlanner"/>.
+        ///
+        /// A note that arrives more than this after the last main-hand note goes to the main hand
+        /// again (slow enough for one finger); half of it or less and that same hand rolls; between
+        /// the two the other hand takes the note. 300 ms is one beat at 150 BPM, which puts eighth
+        /// notes on alternating hands and sixteenths on a roll.
+        /// </summary>
+        public float ResetMs = 300f;
+
+        /// <summary>
         /// Roll direction: true starts each hand on its middle finger (K J D F, the "outer"
         /// roll), false on its index finger (J K F D, the "inner" roll).
         /// </summary>
