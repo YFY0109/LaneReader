@@ -263,6 +263,23 @@ namespace LaneReader
         public bool ThreeDLanes = false;
 
         /// <summary>
+        /// Which of the two 3D renderers to use.
+        ///
+        /// true (the default) draws the playfield exactly as the flat view does - one rectangle per
+        /// lane, one per note, one per hold copy - and puts the whole 3D into ONE projective matrix on
+        /// <see cref="UnityEngine.GUI.matrix"/> (see Plugin.WarpMatrix). The floor is a plane, so a
+        /// pinhole camera maps it to the screen with a single homography, and the GPU does the rest:
+        /// true trapezoids with straight edges, no bands, no seams, and a custom sprite interpolated
+        /// across the plate the way any textured quad is.
+        ///
+        /// false keeps the older renderer, which approximates each trapezoid with a stack of
+        /// axis-aligned rectangles. It is the fallback: a projective GUI matrix is not something Unity
+        /// documents, so if 3D comes out wrong (blank, or the whole overlay somewhere off screen),
+        /// switch this off and the bands come back.
+        /// </summary>
+        public bool ThreeDWarp = true;
+
+        /// <summary>
         /// How close the camera is: eye = lane length / strength, i.e. a note has shrunk to half size
         /// and climbed to half the lane once it is (lane length / strength) pixels of fall above the
         /// line. 1.0 is the natural setting - the fall then covers the same screen distance near the

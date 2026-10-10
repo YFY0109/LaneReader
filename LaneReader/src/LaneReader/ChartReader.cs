@@ -894,22 +894,59 @@ namespace LaneReader
                 _notes.Add(note);
             }
 
-            // A midspin is carried by a pair of tiles at the same instant, so it was drawn twice.
-            // Only midspin pairs are collapsed: two simultaneous taps elsewhere are a different
-            // case and are left alone.
-            int deduped = 0;
+            // ---- midspins: converted into normal tiles ---------------------------
+            //
+            // scrFloor.midSpin is set by the game on the floor BEFORE a zero-length tile: an
+            // angle-data 999 (or '!' in a path) makes the game build one extra floor that moves no
+            // angle at all, and the game marks the floor in front of it. The planet does not stop on
+            // that pair, so it is ONE press - but it is two floors, and the timeline has a spare entry
+            // for it.
+            //
+            // The pair is converted into one normal tile instead of being deleted:
+            //
+            //   * the two floors are one press, so only one of them survives. The survivor is the
+            //     EARLIER floor, which is the one the game flagged;
+            //   * it is no longer flagged midspin. From here on it is an ordinary tile, so the
+            //     hand-split planner sees exactly one ordinary press and its windows - count, pattern,
+            //     hand rule - are computed from the same timeline as any other chart, with nothing
+            //     special-casing a midspin anywhere;
+            //   * the angle is not lost with the removed floor. The beat grid is derived from the
+            //     merged list, and the pair is angle-equivalent (the removed floor moves no angle), so
+            //     the survivor's turn measured to the next remaining tile is the same turn the game's
+            //     own timeline gives it - which is the "convert it by angle" half of this: by angle,
+            //     or by time, the pair measures the same amount of music either way.
+            //
+            // A pair counts as one press when the two floors are within a millisecond of each other -
+            // real tiles are tens of milliseconds apart even at the extreme BPM this planner rolls at.
+            // Two floors further apart are two real presses and are left completely alone. What was
+            // folded is logged with both seqIds, the time between them and the turn the survivor
+            // measured, so a chart where a midspin really does carry time is obvious in the log.
+            int folded = 0;
             for (int i = _notes.Count - 1; i > 0; i--)
             {
-                if (!_notes[i].MidSpin && !_notes[i - 1].MidSpin)
-                    continue;
-                if (Math.Abs(_notes[i].HitTime - _notes[i - 1].HitTime) >= 1e-4)
+                Note later = _notes[i];
+                Note earlier = _notes[i - 1];
+                if (!later.MidSpin && !earlier.MidSpin)
                     continue;
 
+                double gap = later.HitTime - earlier.HitTime;
+                if (Math.Abs(gap) >= 0.001)
+                    continue;
+
+                double turn = TurnDegrees(AngleOf(earlier.Floor), AngleOf(later.Floor));
+                earlier.MidSpin = false;
+                _notes[i - 1] = earlier;
                 _notes.RemoveAt(i);
-                deduped++;
+                folded++;
+
+                if (folded <= 8)
+                    Plugin.Log(string.Format(
+                        "chart midspin: seqID {0}+{1} folded into one normal tile " +
+                        "(dt {2:F6}s, turn {3:F1} deg)",
+                        earlier.SeqId, later.SeqId, gap, turn));
             }
-            if (deduped > 0)
-                Plugin.Log("merged " + deduped + " duplicate midspin notes");
+            if (folded > 0)
+                Plugin.Log("chart midspins: " + folded + " pair(s) folded into normal tiles");
 
             if (_notes.Count > 0)
             {
