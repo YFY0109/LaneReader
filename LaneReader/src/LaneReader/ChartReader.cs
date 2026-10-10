@@ -58,6 +58,16 @@ namespace LaneReader
         /// than anything derived here.
         /// </summary>
         public double HoldBeats;
+
+        /// <summary>
+        /// The angle the beat grid measures this note's turn from, when that is not the angle of
+        /// <see cref="Floor"/>. Only a folded midspin sets it: the press is the flagged floor in
+        /// front of the midspin tile, but the rotation the game spends there belongs to the midspin
+        /// tile behind it, whose entry angle is half a turn further round - so measuring from the
+        /// flagged floor would read the pair's 360-degree spin as 180. NaN means "read it off the
+        /// floor"; set explicitly in Build(), because a struct cannot initialise a field.
+        /// </summary>
+        public double GridAngle;
     }
 
     /// <summary>One beat line: when it crosses the judgement line, and which beat it is.</summary>
@@ -872,6 +882,7 @@ namespace LaneReader
                 note.SeqId = seqIds[i];
                 note.Floor = f;
                 note.MidSpin = IsMidSpin(f);
+                note.GridAngle = double.NaN;
 
                 // Direction from the entry angle: 0 = clockwise quarter turn in ADOFAI's
                 // encoding, which is what scrLevelMaker stores.
@@ -904,24 +915,40 @@ namespace LaneReader
             //
             // The pair is converted into one normal tile instead of being deleted:
             //
-            //   * the two floors are one press, so only one of them survives. The survivor is the
-            //     EARLIER floor, which is the one the game flagged;
+            //   * the two floors are one press, so only one of them survives: the EARLIER floor, which
+            //     is the one the game flagged. That is the floor the planet is standing on when the
+            //     press lands (currFloor.midSpin is what the game gives the infinite margin to), so it
+            //     is the tile being hit, and a hold that rode on it stays with it;
+            //   * the angle moves over, though. The game gives the flagged floor a length of zero
+            //     (CalculateSingleFloorAngleLength zeroes a midSpin floor's angle) and spends the
+            //     pair's rotation on the midspin tile behind it, whose entry angle is half a turn
+            //     further round. So the survivor keeps that tile's angle for the beat grid
+            //     (Note.GridAngle), which is what makes the pair measure its true 360 degrees instead
+            //     of 180 - one beat short, which is what "turn 176.9 deg" in the old log line was: a
+            //     180-degree pair with the game's radians fed into a formula that wants degrees;
             //   * it is no longer flagged midspin. From here on it is an ordinary tile, so the
             //     hand-split planner sees exactly one ordinary press and its windows - count, pattern,
             //     hand rule - are computed from the same timeline as any other chart, with nothing
             //     special-casing a midspin anywhere;
-            //   * the angle is not lost with the removed floor. The beat grid is derived from the
-            //     merged list, and the pair is angle-equivalent (the removed floor moves no angle), so
-            //     the survivor's turn measured to the next remaining tile is the same turn the game's
-            //     own timeline gives it - which is the "convert it by angle" half of this: by angle,
-            //     or by time, the pair measures the same amount of music either way.
+            //   * nothing is lost with the removed floor. Its time is the survivor's time (the pair
+            //     shares one entry time), and its angle now rides on the survivor, so the survivor's
+            //     turn to the next remaining tile is what the game's own timeline gives it.
             //
             // A pair counts as one press when the two floors are within a millisecond of each other -
             // real tiles are tens of milliseconds apart even at the extreme BPM this planner rolls at.
-            // Two floors further apart are two real presses and are left completely alone. What was
-            // folded is logged with both seqIds, the time between them and the turn the survivor
-            // measured, so a chart where a midspin really does carry time is obvious in the log.
+            // Two floors further apart are two real presses and are left completely alone (and logged,
+            // because that is the one case where the planner sees a press the game does not ask for).
+            // Every fold is logged with both seqIds, the time between them and the turn the survivor
+            // measures now, so a chart where a midspin really does carry time is obvious in the log.
+            int flagged = 0;
+            for (int i = 0; i < _notes.Count; i++)
+            {
+                if (_notes[i].MidSpin)
+                    flagged++;
+            }
+
             int folded = 0;
+            int kept = 0;
             for (int i = _notes.Count - 1; i > 0; i--)
             {
                 Note later = _notes[i];
@@ -931,22 +958,50 @@ namespace LaneReader
 
                 double gap = later.HitTime - earlier.HitTime;
                 if (Math.Abs(gap) >= 0.001)
+                {
+                    // A pair this far apart is not one press: it carries time of its own and both
+                    // floors are real. Left alone, and said out loud - a chart where this happens is
+                    // the one case where the mod's timeline has a press the game does not ask for.
+                    kept++;
+                    if (kept <= 8)
+                        Plugin.Log(string.Format(
+                            "chart midspin: seqID {0}+{1} NOT folded, {2:F6}s apart - kept as two presses",
+                            earlier.SeqId, later.SeqId, gap));
                     continue;
+                }
 
-                double turn = TurnDegrees(AngleOf(earlier.Floor), AngleOf(later.Floor));
+                // The flagged floor stays: it is the floor the planet is on when the press lands
+                // (scrPlayer's currFloor.midSpin is what gets the infinite margin), so it is the tile
+                // the player hits, and any hold that rode on it stays with it. What moves over is the
+                // ANGLE the beat grid reads - the rotation belongs to the midspin tile behind it.
                 earlier.MidSpin = false;
+                later.MidSpin = false;
+                earlier.GridAngle = AngleOf(later.Floor);
                 _notes[i - 1] = earlier;
                 _notes.RemoveAt(i);
                 folded++;
 
                 if (folded <= 8)
+                {
+                    // The real number to watch: the surviving note's turn to the next press, measured
+                    // from the midspin tile's angle. A midspin is a full 360, and this says whether the
+                    // pair still measures it - the log used to print 176.9/183.1 here because it fed
+                    // the game's radians into a formula that wants degrees.
+                    double turn = i < _notes.Count
+                        ? TurnDegrees(AngleDegrees(_notes[i - 1].GridAngle),
+                                      AngleDegrees(AngleOf(_notes[i].Floor)))
+                        : 0.0;
                     Plugin.Log(string.Format(
                         "chart midspin: seqID {0}+{1} folded into one normal tile " +
-                        "(dt {2:F6}s, turn {3:F1} deg)",
+                        "(dt {2:F6}s, turn to next {3:F1} deg)",
                         earlier.SeqId, later.SeqId, gap, turn));
+                }
             }
-            if (folded > 0)
-                Plugin.Log("chart midspins: " + folded + " pair(s) folded into normal tiles");
+            if (flagged > 0)
+                Plugin.Log(string.Format(
+                    "chart midspins: {0} flagged floor(s), {1} folded into normal tiles{2}",
+                    flagged, folded,
+                    kept > 0 ? ", " + kept + " left as two presses (see above)" : ""));
 
             if (_notes.Count > 0)
             {
@@ -1034,7 +1089,9 @@ namespace LaneReader
             int unreadable = 0;
             for (int i = 0; i < count; i++)
             {
-                angles[i] = AngleOf(_notes[i].Floor);
+                angles[i] = double.IsNaN(_notes[i].GridAngle)
+                    ? AngleOf(_notes[i].Floor)
+                    : _notes[i].GridAngle;
                 if (double.IsNaN(angles[i]))
                     unreadable++;
             }
@@ -1153,6 +1210,19 @@ namespace LaneReader
             if (double.IsNaN(angle))
                 return double.NaN;
             return radians ? angle * (180.0 / Math.PI) : angle;
+        }
+
+        /// <summary>
+        /// The same conversion for a single angle whose unit is not known here: anything at or below
+        /// a full turn is radians (the game reports radians on this install - 4.712 is the starting
+        /// angle), anything larger is already degrees. Used by the midspin log, which has to print a
+        /// turn in degrees without <see cref="ComputeBeats"/>' whole-chart radians test.
+        /// </summary>
+        private static double AngleDegrees(double angle)
+        {
+            if (double.IsNaN(angle))
+                return double.NaN;
+            return Math.Abs(angle) <= 7.0 ? angle * (180.0 / Math.PI) : angle;
         }
 
         /// <summary>
