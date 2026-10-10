@@ -41,6 +41,13 @@ namespace LaneReader
         /// </summary>
         internal const string HomePage = "https://github.com/fallingCB/LaneReader";
 
+        /// <summary>
+        /// Where the hand-split planner was ported from (MIT): its PlayScript.cpp is the source of
+        /// the window bands and the hand rule. Linked from the panel, because the panel describes
+        /// all three planners and this is the only one that is not ours.
+        /// </summary>
+        internal const string ReferenceMacro = "https://github.com/TonyLimps/ReADOFAIMacro";
+
         private static readonly ChartReader Chart = new ChartReader();
         private static FingeringPlanner.Result _plan;
         private static double _planFingerprint = double.NaN;
@@ -138,6 +145,11 @@ namespace LaneReader
             }
 
             GUILayout.BeginVertical();
+
+            // A reading aid can also simply be played, and that use is a cheat: said once, at the
+            // top of the panel, where it cannot be missed.
+            GUILayout.Label("本 mod 旨在帮助理解谱面配置，或者提供一种玩法。");
+            GUILayout.Label("请不要只是为了直接打出更好的成绩而使用它——某种意义上这是一种外挂。");
 
             Toggle("显示叠加层", ref Cfg.Enabled);
 
@@ -386,7 +398,24 @@ namespace LaneReader
                 if (GUILayout.Button(FingeringName(Cfg.FingeringMode), GUILayout.Width(160f)))
                     Cfg.FingeringMode = (Cfg.FingeringMode + 1) % 3;
                 GUILayout.EndHorizontal();
-                GUILayout.Label("点一下换一种：原版 → 拆手序（参考移植）→ 时间重置法。");
+                GUILayout.Label("点一下换一种，三种手法没有绝对好坏：");
+                GUILayout.Label("· AdoFalling 原版：只看相邻音的间隔，密集段整条手序就是楼梯，");
+                GUILayout.Label("  处理不了双押（同时的两颗音只能挤在一起）。");
+                GUILayout.Label("· 拆手序（移植自 ReADOFAIMacro，MIT）：基于节拍、依赖原曲 BPM，");
+                GUILayout.Label("  强拍给主手、弱拍给副手，手序最合理，双押和轮指都能处理；");
+                GUILayout.Label("  但三连音交互会很灾难——窗口按 180° 切，三条 1/3 拍的音只在");
+                GUILayout.Label("  归一化缩放正好为 1 时才凑成一个窗口，否则边界落进组里，整段错位。");
+                GUILayout.Label("· 时间重置法：和谱面 BPM 完全无关，只有「换手时间」一个概念，");
+                GUILayout.Label("  各种奇怪节拍都能处理；但每次一定从主手开始，不看强弱拍、");
+                GUILayout.Label("  不考虑节奏，只考虑怎么让手指舒服。");
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("参考实现 ReADOFAIMacro（GitHub）", GUILayout.Width(240f)))
+                {
+                    try { Application.OpenURL(ReferenceMacro); }
+                    catch (Exception ex) { Logger.Log("OpenURL failed: " + ex.Message); }
+                }
+                GUILayout.Label(ReferenceMacro);
+                GUILayout.EndHorizontal();
 
                 if (Cfg.FingeringMode == 1)
                 {

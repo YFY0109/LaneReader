@@ -1042,6 +1042,11 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   正面解决 3 分音被 `2^k` 缩放切错、边界落在音组中间的问题；含外轮收尾扫描、长条尾音同轨
   （链式长条整段同轨）、边界 1ns 容差；`tools/TimeResetCheck.cs` 离线校验。详见 §18。
   dll 71,168 字节。
+- 2026-10-11 收尾：**版本进入 1.0.0**。面板顶部写明「本 mod 旨在帮助理解谱面配置，或者提供一种
+  玩法；请不要只是为了直接打出更好的成绩而使用它——某种意义上这是一种外挂」，并在「排键（手序）」
+  里逐条列出三种手法各自的优势与劣势，附 [ReADOFAIMacro](https://github.com/TonyLimps/ReADOFAIMacro)
+  的可点击外链。README 重写（三种手法对照表、时间重置法规则与离线实测表、默认设置表）。
+  dll 72,704 字节。
 
 ## 18. 时间重置法（`TimeResetPlanner.cs`，2026-10-11）
 

@@ -1,10 +1,14 @@
-﻿LaneReader (4K view) 0.3.0  —— 安装说明
+LaneReader (4K view) 1.0.0  —— 安装说明
 
 1. 确认已装 UnityModManager 0.32.4（ADOFAI 3.3.1 / Mono）
 2. 把本文件夹（LaneReader）整个放进  <游戏目录>\Mods\
    最终应为  <游戏目录>\Mods\LaneReader\LaneReader.dll + Info.json
 3. 启动游戏，UMM 的 mod 列表里出现 "LaneReader (4K view)"
 4. 设置面板在 UMM 的 mod 设置里；按 F8 显示/隐藏叠加层
+5. 面板「排键（手序）」里可切换三种手法：AdoFalling 原版 / 拆手序 / 时间重置法
+
+本 mod 旨在帮助理解谱面配置，或者提供一种玩法。请不要只是为了直接打出更好的成绩而使用它
+—— 某种意义上这是一种外挂。
 
 自定义音符图片:
    把 png/jpg 放到本文件夹，面板「显示 → 音符 → 用自定义图片」打开，
