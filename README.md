@@ -6,7 +6,7 @@
 > ⚠️ **本 mod 旨在帮助理解谱面配置，或者提供一种玩法。请不要只是为了直接打出更好的成绩而使用它
 > —— 某种意义上这是一种外挂。**
 
-面向 ADOFAI 3.3.1 / Unity 6000.3.10f1 / Mono / UnityModManager 0.32.4。当前版本 **1.1.0**。
+面向 ADOFAI 3.3.1 / Unity 6000.3.10f1 / Mono / UnityModManager 0.32.4。当前版本 **1.1.1**。
 
 ---
 
@@ -238,6 +238,14 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # 编译并部�
 ---
 
 ## 版本变更要点
+
+**1.1.1**
+
+- 面板顶部补一行说明：**叠加层只在关卡里出现**，菜单、选歌界面和设置面板里看不到（有不少人以为没生效）；
+  下面再补一行**「叠加层状态」**，直接显示不画的原因（`waiting: scrLevelMaker.instance is null` 等）
+- 新增三条排查日志（不受「输出诊断日志」开关影响）：`overlay tick hook alive`、
+  `overlay draw hook alive`、`idle: <原因>`；用来区分「补丁没挂上」和「挂上了但按设计没画」
+- 排查方法记在 HANDOFF §21
 
 **1.1.0**
 

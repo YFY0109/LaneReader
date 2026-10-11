@@ -1087,6 +1087,10 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   复制它只翻译右列即可加语言。面板顶部语言按钮循环 `lang\*.txt`，首次运行跟随
   `Application.systemLanguage`（非中文 → en），选择存进 `Settings.json` 的 `Language`。
   `build.ps1` 只在缺失时复制语言文件。dll 77,312 字节。
+- 2026-10-11（1.1.1）：**排查“装了但什么都不显示”**（§21）。没有代码 bug —— 那位玩家整局都在
+  菜单里，而 `Tick()` 的 `if (!Chart.Ready) return;` 在 `frame:` 那行之前，菜单里按设计一点不画。
+  加了三条只用于排查的日志（`tick hook alive` / `draw hook alive` / `idle: <原因>`，都不受
+  `DebugLog` 影响），面板顶部补一行“叠加层只在关卡里出现”，en.txt 加一条译文。dll 77,824 字节。
 
 ## 18. 时间重置法（`TimeResetPlanner.cs`，2026-10-11）
 
@@ -1228,6 +1232,42 @@ TimeResetCheck.exe <dump> 165 [inner]  # 参考宏 dump（TSX/TS 行）整首走
   译文不会被覆盖。
 - 校验方式：把源码里所有含中日韩字符的字面量抽出来，和 `en.txt` 的 key 求差集。
   1.1.0 时 188 个 key 全部命中（`中文` 是语言按钮自己的名字，用不到但留着无妨）。
+
+
+## 21. 排查：“装了 mod 但什么都不显示，只有设置面板能开”（2026-10-11）
+
+玩家反馈的现象。看日志（`%USERPROFILE%\AppData\LocalLow\7th Beat Games\A Dance of Fire and Ice\Player.log`，
+UMM 自己的 `Log.txt` 只有加载阶段，mod 的输出全在 Player.log）得到的事实：
+
+```
+[LaneReader] Version '1.1.0'. Loading.
+[LaneReader] harmony hooks applied
+[LaneReader] LaneReader ready - reads the live chart, no file needed
+[LaneReader] Active.
+[LaneReader] settings panel drawing        <- 面板确实画了
+```
+
+一整局日志里**没有** `chart:` / `time reset:` / `frame:` 任何一行，也没有游戏侧的关卡加载痕迹 ——
+说明那个 session 从头到尾待在菜单里，**根本没进过关卡**。这不是 bug：
+
+- `Tick()` 里 `if (!Chart.Ready) return;`，`frame:` 那行在它后面；`chart:` / `time reset:` 只在
+  真的读到谱面时才打。菜单里 `scrLevelMaker.instance` 是空的，**叠加层按设计就是一点不画**
+  （`Chart.LevelStanding()` 为 false：菜单、选歌、编辑器非播放态都不画）。
+- 判断依据因此是：**日志里有没有 `chart: N notes`**。有它 = 谱面读到了，问题在绘制；没有它 = 压根没进关卡。
+
+为此 1.1.1 加了三条只用于排查的日志，都不受 `DebugLog` 影响：
+
+- `overlay tick hook alive (AsyncInputManager.Update postfix)` —— 每局一行，在 `Enabled` / `_hidden`
+  这些 return 之前打，用来区分“补丁没挂上”和“挂上了但按设计没画”。
+- `overlay draw hook alive (AsyncInputManager.OnGUI postfix)` —— 同上，OnGUI 那一侧。
+- `idle: <原因>` —— `DebugLog` 开着时，没谱面可画就报一次原因（同一条原因只报一次，
+  菜单里不会刷屏），内容就是 `ChartReader.Diagnostic`（`waiting: scrLevelMaker.instance is null` 等）。
+
+面板顶部也补了一行说明：叠加层只在关卡里出现，菜单/选歌/设置面板里看不到。
+再往下就是**「叠加层状态: <ChartReader.Diagnostic>」**这一行 —— 面板是玩家在“什么都没画”时
+唯一能看到的东西，所以直接告诉他不画的原因（读到谱面时显示“已读到谱面（进入关卡后就会画出来）”，
+否则原样显示诊断串，如 `waiting: scrLevelMaker.instance is null`；诊断串不翻译，那是给 bug report 看的）。
+
 
 
 > 长按的验收要点（本机谱面数据里如果没有 hold 砖，日志里不会有 `chart holds:` 那行）：

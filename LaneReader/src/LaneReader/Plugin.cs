@@ -58,6 +58,10 @@ namespace LaneReader
         private static bool _hidden;
         private static float _nextLogAt;
         private static bool _guiLogged;
+        private static bool _tickLogged;
+        private static bool _drawLogged;
+        /// <summary>Last "no chart to draw" reason already written to the log; stops the idle line repeating.</summary>
+        private static string _idleDiag;
 
         /// <summary>Degrees the fun spin has accumulated; reset whenever the mode is off.</summary>
         private static float _spinAngle;
@@ -194,6 +198,18 @@ namespace LaneReader
             // top of the panel, where it cannot be missed.
             L("本 mod 旨在帮助理解谱面配置，或者提供一种玩法。");
             L("请不要只是为了直接打出更好的成绩而使用它——某种意义上这是一种外挂。");
+
+            // The one thing a first-time player gets wrong: nothing draws in the menus, because
+            // there is no chart to read there. Said here so the panel does not look broken.
+            L("(叠加层只在关卡里画出来；菜单、选歌界面和这个设置面板里都看不到，这是正常的)");
+
+            // The panel is the only thing a player can see when the overlay is not drawing, so it
+            // says why. The reason strings are the reader's own diagnostics and are not translated:
+            // they are for a bug report, not for reading.
+            GUILayout.BeginHorizontal();
+            L("叠加层状态: ", GUILayout.Width(LabelWidth));
+            L(Chart.Ready ? "已读到谱面（进入关卡后就会画出来）" : Chart.Diagnostic);
+            GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             L("语言 / Language", GUILayout.Width(LabelWidth));
@@ -956,6 +972,15 @@ namespace LaneReader
             if (Cfg == null)
                 return;
 
+            // One line per session, before any gate below can swallow it. "the panel opens but
+            // nothing is drawn" is otherwise indistinguishable, from a log, between "the hook
+            // never fired" and "the hook fired and correctly drew nothing".
+            if (!_tickLogged)
+            {
+                _tickLogged = true;
+                Logger.Log("overlay tick hook alive (AsyncInputManager.Update postfix)");
+            }
+
             MeasureFrameRate();
 
             // The fun spin is integrated here rather than read from unscaledTime so that changing the
@@ -985,7 +1010,18 @@ namespace LaneReader
             bool frozen = Chart.IsFrozen();
 
             if (!Chart.Ready)
+            {
+                // Why nothing is on screen right now. Logged once per distinct reason rather than
+                // every poll: the menu is the normal case and would otherwise flood the log.
+                if (log && Chart.Diagnostic != _idleDiag)
+                {
+                    _idleDiag = Chart.Diagnostic;
+                    Logger.Log("idle: " + _idleDiag);
+                }
                 return;
+            }
+
+            _idleDiag = null;
 
             // A rebuilt chart (new level, retry) invalidates the overlay clock, the cleared notes
             // and the hit feedback. Keying this off the generation counter rather than the note
@@ -1335,7 +1371,16 @@ namespace LaneReader
         /// </summary>
         internal static void Draw()
         {
-            if (Cfg == null || !Cfg.Enabled || _hidden)
+            if (Cfg == null)
+                return;
+
+            if (!_drawLogged)
+            {
+                _drawLogged = true;
+                Logger.Log("overlay draw hook alive (AsyncInputManager.OnGUI postfix)");
+            }
+
+            if (!Cfg.Enabled || _hidden)
                 return;
 
             // Only while a level is up. See NotesVisible: the frame is drawn on the pre-start
