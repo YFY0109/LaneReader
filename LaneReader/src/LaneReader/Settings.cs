@@ -435,6 +435,14 @@ namespace LaneReader
         /// </summary>
         public bool OuterRoll = true;
 
+        /// <summary>
+        /// The panel's language: a code matching a file in the mod's <c>lang\</c> folder ("en" for
+        /// <c>lang\en.txt</c>). "zh" is built in - the Chinese text is what is in the code - and needs
+        /// no file. Empty means "ask the game" on the next load, which is what a fresh install has;
+        /// the panel's language button writes an explicit code here.
+        /// </summary>
+        public string Language = "";
+
         public bool DebugLog = true;
 
         private static string PathFor(UnityModManager.ModEntry modEntry)

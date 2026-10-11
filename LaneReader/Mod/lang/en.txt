@@ -1,0 +1,225 @@
+# LaneReader - English panel text.
+#
+# Each line is:  <the Chinese text as it is in the code>	<English>
+# separated by a TAB. The left side is the key - do not translate it, and do not add or remove
+# spaces at the start of it: the panel's indentation is part of the text.
+#
+# Why a tab: lots of the Chinese lines contain " = " themselves.
+# (" = " also works as a separator when the key does not contain one.)
+#
+# Adding another language: copy this file to lang\<code>.txt (e.g. lang\jp.txt), keep every left
+# side exactly as it is, translate the right side. The panel's language button lists every .txt
+# in lang\. \n in a value is a line break, # or ; starts a comment.
+
+# ---- top of the panel ----
+本 mod 旨在帮助理解谱面配置，或者提供一种玩法。	This mod is meant to help you read a chart, or to be played as a different layout.
+请不要只是为了直接打出更好的成绩而使用它——某种意义上这是一种外挂。	Please do not use it just to score better - in a sense, that is a cheat.
+语言 / Language	Language / 语言
+(lang\ 里的 .txt 文件都会出现在这里)	(every .txt in lang\ shows up here)
+
+# ---- sections ----
+显示	Display
+布局	Layout
+外观 / 颜色	Look / colours
+轨道	Lanes
+判定线 / 判定框	Judge line / box
+小节线	Beat lines
+长按（hold）	Holds
+排键（手序）	Fingering
+对齐	Sync
+实验性	Experimental
+娱乐	Fun
+其它	Misc
+
+# ---- display ----
+显示叠加层	Show the overlay
+键位标签 D F J K	Key labels (D F J K)
+判定框	Judge boxes
+打击弹跳	Strike bounce
+音符边框	Note border
+边框粗细 (px)	Border thickness (px)
+显示帧数 (判定线下方)	Frame counter (under the judge line)
+全屏纯色背景（挡住游戏画面）	Solid full-screen background (hides the game)
+背景色	Background colour
+颜色的 A 就是透明度：默认黑色 50%，A=1 就是全不透明。	The colour's A is its opacity: black at 50% by default, A=1 is fully opaque.
+用自定义音符图片	Use a custom note image
+图片路径	Image path
+重新加载	Reload
+相对路径基于 mod 目录，例: note.png = 	Relative to the mod folder, e.g. note.png = 
+保持宽高比	Keep the aspect ratio
+状态: 	Status: 
+图片按原样画：不加任何着色，也不画音符边框——没画到的地方就是透明的。	The image is drawn as it is: no tint, no note border - whatever it does not cover is transparent.
+「平滑下落」的拖尾重影也用这张图。	The "smooth falling" trail uses this image too.
+长按线条用自定义图片	Use a custom image for hold bars
+长按图片路径	Hold image path
+图片的下面是长按的开头（贴着判定线那端），上面是尾巴（下一颗音符）；	The bottom of the image is the start of the hold (at the judge line), the top is the end (the next note);
+>0 时图片首尾相接反复铺下去，每隔这么多拍接一次（按长按自己的拍数算，	above 0 the image tiles end to end, once every this many beats (counted in the hold's own beats,
+和下落速度无关）；示例 hold.png 就是按可平铺画的，直接能用。	independent of fall speed); the bundled hold.png is drawn to tile and works as it is.
+宽度仍按「外观 / 颜色 → 长按」里的粗细比例；图片按原样画，不乘颜色/透明度。	The width still follows the thickness ratio under "Look / colours -> Holds"; the image is drawn as it is, with no colour or opacity on top.
+
+# ---- layout ----
+下落速度 (px/秒 @1080p)	Fall speed (px/s at 1080p)
+轨道长度 (px, 0=自动到屏幕顶)	Lane length (px, 0 = up to the top of the screen)
+默认 1620 = 1.5 屏，上边界在屏幕外，所以音符是从屏幕顶上滑进来的；	1620 by default = 1.5 screens, so the top edge is off screen and notes slide in from above;
+轨道长度同时是可见区域的上边界：音符和小节线都从那里开始出现。	the lane length is also the top of the visible area: notes and beat lines only appear from there.
+调小它就会看到音符在轨道顶端凭空出现。	Lower it and you will see notes pop into existence at the top of the lane.
+轨道宽度 (px)	Lane width (px)
+轨道间距 (px)	Lane gap (px)
+水平偏移 (px)	Horizontal offset (px)
+音符高度 (px)	Note height (px)
+判定线高度 (0~1)	Judge line height (0~1)
+显示判定线	Show the judge line
+判定线横跨全屏	Judge line spans the screen
+判定线长度 (% 屏宽)	Judge line length (% of screen width)
+整体旋转 (度)	Rotation of the whole overlay (degrees)
+整个叠加层绕判定线中点转，叠加在「整体旋转」的角度上；关掉就回到你设的角度。	The whole overlay turns about the middle of the judge line, on top of the angle set here; turn it off to go back to that angle.
+
+# ---- colours ----
+主题（一键套用，之后仍可逐项改）:	Themes (one click, still editable item by item):
+当前主题: 	Current theme: 
+（手动改过颜色后这里不会跟着变）	(does not follow once you edit colours by hand)
+经典 蓝橙（暗底白线）	Classic blue/orange (dark, white line)
+亮底黑线	Light background, black line
+霓虹 紫青	Neon purple/cyan
+黄金 黑底	Gold on black
+四轨彩虹	Four-lane rainbow
+极简 纯白	Minimal white
+纯黑底 经典白线	Pure black, classic white line
+套用主题也会把「显示 → 全屏纯色背景」按该主题设好：	Applying a theme also sets "Display -> solid background" for it:
+只有「纯黑底 经典白线」会打开它，其它主题都关掉（想留着自己再开）。	only "pure black, classic white line" turns it on, every other theme turns it off (turn it back on if you want it).
+显示开关和粗细在「显示」区里。	The toggle and the thickness are in the "Display" section.
+轨道底色	Lane fill
+四轨单独	Per lane
+四轨统一	All lanes
+轨道底色总透明度	Lane fill opacity
+总透明度会乘在颜色的 alpha 上（默认 0.06，所以颜色 A 拉满也很淡）。	The opacity multiplies the colour's alpha (0.06 by default, so a maxed-out A is still faint).
+轨道边框	Lane edge
+轨道边框色	Lane edge colour
+边框就是轨道两侧那条线。3D 下轨道体是一叠横带拼的，边线盖住的	The edge is the line down each side of a lane. In 3D the lane body is a stack of bands, and the edge covers
+横带台阶越多，边看着越干净——所以锯齿明显时先把这里调粗试试。	more of their steps the thicker it is - so if the edges look jagged, thicken it first.
+轨道背景透明度	Lane background opacity
+开	On
+关	Off
+音符	Notes
+中文	Chinese
+重复间隔 (拍, 0=整条一张)	Repeat every (beats, 0 = one image for the whole bar)
+边框	edge
+底色	fill
+音符边框色	Note border colour
+默认 1/2 轨同色、3/4 轨同色 = 原来的左右手配色。	Lanes 1/2 and 3/4 share a colour by default = the old left/right hand palette.
+判定线	Judge line
+判定框	Judge box
+键位标签	Key labels
+帧数文字	Frame text
+细线（每拍）	Thin line (every beat)
+粗线（每小节）	Thick line (every bar)
+线透明度	Line opacity
+线总透明度	Line opacity
+细线粗细 (px)	Thin line thickness (px)
+粗线粗细 (px)	Thick line thickness (px)
+粗线另外再乘 1.8，所以它比细线显眼；把粗线颜色 A 调低就能拉平。	The thick line is drawn 1.8x thicker, so it stands out; lower its A to even them out.
+长按线条	Hold bar
+长按线条色	Hold bar colour
+长按的中间那段线条。要和普通音符一样单独配色就打开下面的开关。	The bar along the middle of a hold. Turn the switch on to colour it per lane like notes.
+长按	hold
+线条粗细（轨道宽的比例）	Bar thickness (fraction of the lane width)
+
+# ---- beat lines ----
+显示小节线	Show beat lines
+每小节拍数 (3=3/4, 4=4/4)	Beats per bar (3 = 3/4, 4 = 4/4)
+小节起点偏移 (拍)	Bar phase (beats)
+横跨全屏	Span the screen
+
+# ---- fingering ----
+轨道顺序: D  F  J  K	Lane order: D  F  J  K
+手法	Method
+点一下换一种，三种手法没有绝对好坏：	Click to switch; none of the three is strictly better:
+· AdoFalling 原版：只看相邻音的间隔，密集段整条手序就是楼梯，	- AdoFalling original: looks only at the gap to the next note; in dense passages the fingering is a staircase,
+  处理不了双押（同时的两颗音只能挤在一起）。	  and it cannot handle double presses (two notes at once end up in one lane).
+· 拆手序（移植自 ReADOFAIMacro，MIT）：基于节拍、依赖原曲 BPM，	- Hand split (ported from ReADOFAIMacro, MIT): beat based, needs the chart's own BPM,
+  强拍给主手、弱拍给副手，手序最合理，双押和轮指都能处理；	  strong beats to the main hand and weak beats to the off hand - the most sensible fingering, and it handles both double presses and rolls;
+  但三连音交互会很灾难——窗口按 180° 切，三条 1/3 拍的音只在	  but triplets are a disaster: windows are cut at 180 degrees, so three notes a third of a beat apart only form
+  归一化缩放正好为 1 时才凑成一个窗口，否则边界落进组里，整段错位。	  one window when the normalising factor happens to be exactly 1 - otherwise the boundary lands inside the group and everything after it shifts.
+· 时间重置法：和谱面 BPM 完全无关，只有「换手时间」一个概念，	- Time reset: nothing to do with the chart's BPM, one idea only (how long before the hand resets),
+  各种奇怪节拍都能处理；但每次一定从主手开始，不看强弱拍、	  so any odd rhythm works; but it always starts on the main hand and ignores strong and weak beats,
+  不考虑节奏，只考虑怎么让手指舒服。	  thinking only about what is comfortable for the fingers.
+AdoFalling 原版	AdoFalling original
+拆手序（参考移植）	Hand split (port)
+时间重置法	Time reset
+参考实现 ReADOFAIMacro（GitHub）	Reference implementation ReADOFAIMacro (GitHub)
+刷新手序	Refresh fingering
+改了设置或换谱后手序没更新时点它。	Click this if the fingering did not update after a settings change or a new chart.
+双押合并 (毫秒)	Double-press merge (ms)
+间隔小于它的两颗音当作双押：后一颗移到和前一颗同一行；0 = 关。	Two notes closer than this count as one double press: the later one moves onto the earlier one's row; 0 = off.
+三种手法都有效果；长条的尾音不参与（它必须留在长条末端）。	Applies to all three methods; a hold's release is left alone (it has to stay at the end of the bar).
+主手重置间隔 (毫秒)	Main-hand reset (ms)
+只看音符间隔，不看谱面 BPM。	Note gaps only, never the chart's BPM.
+超过它 = 单指慢慢点；一半到它之间 = 主手强拍、副手弱拍；	Above it = one finger taps; between half of it and it = main hand on strong beats, off hand on weak ones;
+小于一半 = 主手轮指，更密 = 双手轮指。	Below half = the main hand rolls, and tighter still = both hands roll.
+长条的尾音永远跟在头的那条轨道上。	A hold's release always stays in its head's lane.
+最大硬抗 BPM	Hard-resist limit (BPM)
+超过它就减半一次窗口（参考实现原样；越低越偏轮指）。	Above it the window is halved once (as in the reference; lower means more rolling).
+读不到谱面 BPM 时基准是 800：设成 850 就不减半（base 800），	With no readable chart BPM the base is 800: at 850 it is not halved (base 800),
+设成 506 会减半（base 400，轮指更多）。	and at 506 it is (base 400, more rolling).
+轮指方向	Roll direction
+外轮 K J D F	Outer K J D F
+内轮 J K F D	Inner J K F D
+轮指窗口 (毫秒)	Roll window (ms)
+间隔小于窗口 = 轮指；大于 = 食指交替。	Gaps below the window roll; above it the index fingers alternate.
+
+# ---- sync ----
+时间偏移 (秒)	Time offset (s)
+只影响叠加层显示，不动游戏判定。	Affects the overlay only, never the game's judgement.
+
+# ---- experimental ----
+3D 轨道（灭点在轨道顶端）	3D lanes (vanishing point at the top)
+透视强度	Perspective strength
+1.00 时音符在判定线附近的屏幕速度和关掉 3D 时一样。	At 1.00 a note's on-screen speed near the judge line matches 3D being off.
+灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；	The vanishing point is the top of the lane ("lane length" above the judge line) and the four lanes converge on it;
+音符越靠近灭点越窄越矮，越靠近判定线越大越快。判定线/判定框/标签都在	A note gets narrower and shorter towards it and bigger and faster towards the judge line. The judge line, boxes and labels are all
+判定线这一端，不受影响。强度 = 判定线到「缩到一半」的距离的倒数：	at this end and unaffected. Strength = 1 / the distance from the judge line at which things halve:
+轨道体是一叠横带拼出来的（IMGUI 只能填轴对齐矩形），两侧边线是真的直线；	The lane body is a stack of bands (IMGUI can only fill axis-aligned rectangles) and the two edges are true straight lines;
+把「外观 / 颜色 → 轨道 → 边框粗细」调粗一点，边线就能把横带的台阶盖住，	Thicken "Look / colours -> Lanes -> edge thickness" a little and the edge covers the steps of the bands,
+锯齿会更不明显（默认已经比上一版粗 1px）。	which hides the jaggies (already 1px thicker than the previous version).
+（试过用投影矩阵让显卡直接做透视，IMGUI 不接受那个用法，已删。）	(A projection matrix was tried so the GPU would do the perspective; IMGUI does not accept that, so it is gone.)
+平滑下落（重影拖尾）	Smooth falling (ghost trail)
+拖尾长度 (毫秒)	Trail length (ms)
+拖尾层数	Trail layers
+拖尾浓度	Trail strength
+音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），拖尾就是	Note positions are only sampled once a frame (about 17px a frame at 60fps and 1000px/s); the trail is
+把那一段固定时间里的位置淡着补画出来，让眼睛读成运动而不是跳。	that stretch of time drawn faintly in between, so the eye reads motion rather than jumps.
+长度是固定的毫秒数、层数只决定密不密——按「上一帧走了多远」来铺会让整个	The length is a fixed number of milliseconds and only the density depends on the layers - laying it out by "how far the last frame moved" makes the whole
+拖尾随帧时间忽长忽短，那就是之前一卡一卡的原因。	trail stretch and shrink with the frame time, which is what used to look stuttery.
+采样冻结时（暂停、结算）不会画拖尾。纯观感，不影响时间轴。	No trail while the sample is frozen (paused, results screen). Looks only, the timeline is untouched.
+补帧（叠加前后帧）	Frame blending (ghosts the previous and next frame)
+前后帧透明度	Ghost opacity
+前后帧间隔 (帧)	Ghost spacing (frames)
+把上一帧和下一帧的位置各按这个透明度画一遍，再把当前帧画在上面，共 3 帧；	Draws the previous and the next frame at this opacity and the current one on top, three frames in all;
+「一帧」取实测帧时间，所以帧率变化时前后帧的距离不会跟着变。	"one frame" is the measured frame time, so the spacing does not change with the frame rate.
+只叠会动的东西（音符/拖尾/长按/小节线），轨道和判定线画一次。	Only the moving parts are drawn again (notes, trails, holds, beat lines); lanes and the judge line are drawn once.
+暂停、结算时不叠。开着它每帧画 3 遍，帧数紧张就关掉。	Nothing is blended while paused or on the results screen. It draws three times a frame, so turn it off if frames are tight.
+长按（hold）支持	Hold support
+读 scrFloor.holdLength 画长按长条：长条末端正好接上下一颗音符的开头	Reads scrFloor.holdLength and draws the bar: its far end meets the start of the next note
+（和游戏自己一样，游戏的 hold 尾就是下一块砖）；	(exactly as the game does - the game's hold ends on the next tile);
+拆手序还会把松手当成一颗键，强制和长按开头同轨；长按结尾那颗音符也	The hand-split planner also feeds the release in as a key on the head's lane, and the note the hold ends on
+强制回到同一条轨道（手指还按着，它只能在原地）。颜色在「外观 / 颜色 → 长按」。	is forced onto the same lane too (the finger is still down, it cannot be anywhere else). Colours are under "Look / colours -> Holds".
+判定线从下面把它吃掉、尾巴从上面把它截掉——两端都是裁掉，不是压扁。	The judge line eats it from below and the next note cuts it from above - both ends are cropped, not squashed.
+
+# ---- fun ----
+轨道乱飞	Lanes flying about
+乱飞幅度 (px)	Wander amplitude (px)
+乱飞速度	Wander speed
+每条轨道走自己的 Perlin 噪声路径（平滑漂移，不是抖），轨道和它的音符一起走。	Every lane follows its own Perlin path (a smooth drift, not a jitter), and its notes go with it.
+轨道持续旋转	Lanes spinning
+旋转速度 (度/秒)	Spin speed (deg/s)
+四花瓣（四条轨道互相垂直）	Four petals (perpendicular lanes)
+四条轨道的底部中心都在判定线中点，各绕它转 0/90/180/270 度，	All four lanes have their bottom centre on the middle of the judge line and turn about it by 0/90/180/270 degrees,
+所以朝四个互相垂直的方向伸出去，中间没有方块。	so they reach out in four perpendicular directions with no block in the middle.
+
+# ---- misc ----
+切换键: 	Toggle key: 
+输出诊断日志	Diagnostic log
+打开 GitHub 页面	Open the GitHub page
+恢复默认	Load defaults
+保存	Save
+改动即时生效；「保存」写进 Settings.json，关面板时 UMM 也会自动保存。	Changes take effect at once; "Save" writes Settings.json, and UMM saves it when the panel closes anyway.

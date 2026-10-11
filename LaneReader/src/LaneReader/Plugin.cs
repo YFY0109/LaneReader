@@ -95,6 +95,12 @@ namespace LaneReader
             ModPath = modEntry.Path;
             Cfg = Settings.Load(modEntry);
 
+            // Panel text: the language files live next to the dll, in lang\. An empty setting means
+            // "follow the game's own language", which is what a first run gets.
+            L10n.Init(ModPath, Logger.Log);
+            L10n.Use(string.IsNullOrEmpty(Cfg.Language) ? SystemLanguageCode() : Cfg.Language);
+            Cfg.Language = L10n.Code;
+
             modEntry.OnGUI = OnGui;
             modEntry.OnSaveGUI = OnSaveGui;
             modEntry.OnUnload = OnUnload;
@@ -112,6 +118,44 @@ namespace LaneReader
 
             Logger.Log("LaneReader ready - reads the live chart, no file needed");
             return true;
+        }
+
+        /// <summary>
+        /// What the game itself is running in, used on a first run so a non-Chinese player does not
+        /// open the panel to Chinese text. Anything that is not Chinese lands on English.
+        /// </summary>
+        private static string SystemLanguageCode()
+        {
+            try
+            {
+                switch (Application.systemLanguage)
+                {
+                    case SystemLanguage.Chinese:
+                    case SystemLanguage.ChineseSimplified:
+                    case SystemLanguage.ChineseTraditional:
+                        return L10n.DefaultLanguage;
+                    default:
+                        return "en";
+                }
+            }
+            catch
+            {
+                return L10n.DefaultLanguage;
+            }
+        }
+
+        /// <summary>Steps to the next language file and re-reads the panel text.</summary>
+        private static void NextLanguage()
+        {
+            IList<string> codes = L10n.Available;
+            int at = 0;
+            for (int i = 0; i < codes.Count; i++)
+                if (codes[i] == L10n.Code)
+                    at = i;
+
+            string next = codes[(at + 1) % codes.Count];
+            Cfg.Language = next;
+            L10n.Use(next);
         }
 
         private static void OnSaveGui(UnityModManager.ModEntry modEntry)
@@ -148,8 +192,15 @@ namespace LaneReader
 
             // A reading aid can also simply be played, and that use is a cheat: said once, at the
             // top of the panel, where it cannot be missed.
-            GUILayout.Label("本 mod 旨在帮助理解谱面配置，或者提供一种玩法。");
-            GUILayout.Label("请不要只是为了直接打出更好的成绩而使用它——某种意义上这是一种外挂。");
+            L("本 mod 旨在帮助理解谱面配置，或者提供一种玩法。");
+            L("请不要只是为了直接打出更好的成绩而使用它——某种意义上这是一种外挂。");
+
+            GUILayout.BeginHorizontal();
+            L("语言 / Language", GUILayout.Width(LabelWidth));
+            if (Btn(L10n.Name, GUILayout.Width(160f)))
+                NextLanguage();
+            L("(lang\\ 里的 .txt 文件都会出现在这里)", GUILayout.Width(360f));
+            GUILayout.EndHorizontal();
 
             Toggle("显示叠加层", ref Cfg.Enabled);
 
@@ -172,43 +223,43 @@ namespace LaneReader
                 if (Cfg.BackgroundEnabled)
                 {
                     ColourRow("背景色", ref Cfg.BackgroundColour);
-                    GUILayout.Label("颜色的 A 就是透明度：默认黑色 50%，A=1 就是全不透明。");
+                    L("颜色的 A 就是透明度：默认黑色 50%，A=1 就是全不透明。");
                 }
 
                 Toggle("用自定义音符图片", ref Cfg.NoteImageEnabled);
                 if (Cfg.NoteImageEnabled)
                 {
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("图片路径", GUILayout.Width(LabelWidth));
+                    L("图片路径", GUILayout.Width(LabelWidth));
                     Cfg.NoteImagePath = GUILayout.TextField(Cfg.NoteImagePath, GUILayout.Width(320f));
-                    if (GUILayout.Button("重新加载", GUILayout.Width(90f)))
+                    if (Btn("重新加载", GUILayout.Width(90f)))
                         NoteImage.Instance.Invalidate(NoteImage.Note);
                     GUILayout.EndHorizontal();
-                    GUILayout.Label("相对路径基于 mod 目录，例: note.png = " + ModPath + "\\note.png");
+                    L(L10n.Tr("相对路径基于 mod 目录，例: note.png = ") + ModPath + "\\note.png");
                     Toggle("保持宽高比", ref Cfg.NoteImageKeepAspect);
                     NoteImage.Instance.Get(NoteImage.Note, Cfg.NoteImagePath);   // refreshes the status line
-                    GUILayout.Label("状态: " + NoteImage.Instance.Status(NoteImage.Note));
-                    GUILayout.Label("图片按原样画：不加任何着色，也不画音符边框——没画到的地方就是透明的。");
-                    GUILayout.Label("「平滑下落」的拖尾重影也用这张图。");
+                    L(L10n.Tr("状态: ") + NoteImage.Instance.Status(NoteImage.Note));
+                    L("图片按原样画：不加任何着色，也不画音符边框——没画到的地方就是透明的。");
+                    L("「平滑下落」的拖尾重影也用这张图。");
                 }
 
                 Toggle("长按线条用自定义图片", ref Cfg.HoldImageEnabled);
                 if (Cfg.HoldImageEnabled)
                 {
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("长按图片路径", GUILayout.Width(LabelWidth));
+                    L("长按图片路径", GUILayout.Width(LabelWidth));
                     Cfg.HoldImagePath = GUILayout.TextField(Cfg.HoldImagePath, GUILayout.Width(320f));
-                    if (GUILayout.Button("重新加载", GUILayout.Width(90f)))
+                    if (Btn("重新加载", GUILayout.Width(90f)))
                         NoteImage.Instance.Invalidate(NoteImage.Hold);
                     GUILayout.EndHorizontal();
                     NoteImage.Instance.Get(NoteImage.Hold, Cfg.HoldImagePath);
-                    GUILayout.Label("状态: " + NoteImage.Instance.Status(NoteImage.Hold));
-                    GUILayout.Label("图片的下面是长按的开头（贴着判定线那端），上面是尾巴（下一颗音符）；");
-                    GUILayout.Label("判定线从下面把它吃掉、尾巴从上面把它截掉——两端都是裁掉，不是压扁。");
+                    L(L10n.Tr("状态: ") + NoteImage.Instance.Status(NoteImage.Hold));
+                    L("图片的下面是长按的开头（贴着判定线那端），上面是尾巴（下一颗音符）；");
+                    L("判定线从下面把它吃掉、尾巴从上面把它截掉——两端都是裁掉，不是压扁。");
                     Slider("重复间隔 (拍, 0=整条一张)", ref Cfg.HoldImageRepeatBeats, 0f, 4f, "F2");
-                    GUILayout.Label(">0 时图片首尾相接反复铺下去，每隔这么多拍接一次（按长按自己的拍数算，");
-                    GUILayout.Label("和下落速度无关）；示例 hold.png 就是按可平铺画的，直接能用。");
-                    GUILayout.Label("宽度仍按「外观 / 颜色 → 长按」里的粗细比例；图片按原样画，不乘颜色/透明度。");
+                    L(">0 时图片首尾相接反复铺下去，每隔这么多拍接一次（按长按自己的拍数算，");
+                    L("和下落速度无关）；示例 hold.png 就是按可平铺画的，直接能用。");
+                    L("宽度仍按「外观 / 颜色 → 长按」里的粗细比例；图片按原样画，不乘颜色/透明度。");
                 }
               }
             }
@@ -236,9 +287,9 @@ namespace LaneReader
                 Slider("轨道长度 (px, 0=自动到屏幕顶)", ref Cfg.LaneLengthPx, 0f, 3200f, "F0");
                 Slider("轨道背景透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
                 Slider("整体旋转 (度)", ref Cfg.RotationDegrees, 0f, 360f, "F0");
-                GUILayout.Label("轨道长度同时是可见区域的上边界：音符和小节线都从那里开始出现。");
-                GUILayout.Label("默认 1620 = 1.5 屏，上边界在屏幕外，所以音符是从屏幕顶上滑进来的；");
-                GUILayout.Label("调小它就会看到音符在轨道顶端凭空出现。");
+                L("轨道长度同时是可见区域的上边界：音符和小节线都从那里开始出现。");
+                L("默认 1620 = 1.5 屏，上边界在屏幕外，所以音符是从屏幕顶上滑进来的；");
+                L("调小它就会看到音符在轨道顶端凭空出现。");
               }
             }
 
@@ -247,21 +298,21 @@ namespace LaneReader
             {
               using (Indent())
               {
-                GUILayout.Label("主题（一键套用，之后仍可逐项改）:");
+                L("主题（一键套用，之后仍可逐项改）:");
                 for (int t = 0; t < Themes.Names.Length; t += 2)
                 {
                     GUILayout.BeginHorizontal();
-                    if (GUILayout.Button(Themes.Names[t], GUILayout.Width(240f)))
+                    if (Btn(Themes.Names[t], GUILayout.Width(240f)))
                         Themes.Apply(Cfg, t);
                     if (t + 1 < Themes.Names.Length
-                        && GUILayout.Button(Themes.Names[t + 1], GUILayout.Width(240f)))
+                        && Btn(Themes.Names[t + 1], GUILayout.Width(240f)))
                         Themes.Apply(Cfg, t + 1);
                     GUILayout.EndHorizontal();
                 }
-                GUILayout.Label("当前主题: " + Themes.Names[Mathf.Clamp(Cfg.Theme, 0, Themes.Names.Length - 1)]
-                                + "（手动改过颜色后这里不会跟着变）");
-                GUILayout.Label("套用主题也会把「显示 → 全屏纯色背景」按该主题设好：");
-                GUILayout.Label("只有「纯黑底 经典白线」会打开它，其它主题都关掉（想留着自己再开）。");
+                L(L10n.Tr("当前主题: ") + L10n.Tr(Themes.Names[Mathf.Clamp(Cfg.Theme, 0, Themes.Names.Length - 1)])
+                                + L10n.Tr("（手动改过颜色后这里不会跟着变）"));
+                L("套用主题也会把「显示 → 全屏纯色背景」按该主题设好：");
+                L("只有「纯黑底 经典白线」会打开它，其它主题都关掉（想留着自己再开）。");
 
                 if (Section("轨道", ref _showColourLane))
                 {
@@ -271,28 +322,28 @@ namespace LaneReader
                     if (Cfg.LaneSeparate)
                     {
                         for (int i = 0; i < 4; i++)
-                            ColourRow("轨道 " + (i + 1) + " 底色", ref Cfg.LaneColours[i]);
+                            ColourRow(L10n.Tr("轨道") + " " + (i + 1) + " " + L10n.Tr("底色"), ref Cfg.LaneColours[i]);
                     }
                     else
                     {
                         ColourRow("轨道底色", ref Cfg.LaneColour);
                     }
                     Slider("轨道底色总透明度", ref Cfg.LaneOpacity, 0f, 1f, "F3");
-                    GUILayout.Label("总透明度会乘在颜色的 alpha 上（默认 0.06，所以颜色 A 拉满也很淡）。");
+                    L("总透明度会乘在颜色的 alpha 上（默认 0.06，所以颜色 A 拉满也很淡）。");
 
                     ColourToggle("轨道边框", ref Cfg.LaneEdgeSeparate);
                     if (Cfg.LaneEdgeSeparate)
                     {
                         for (int i = 0; i < 4; i++)
-                            ColourRow("轨道 " + (i + 1) + " 边框", ref Cfg.LaneEdgeColours[i]);
+                            ColourRow(L10n.Tr("轨道") + " " + (i + 1) + " " + L10n.Tr("边框"), ref Cfg.LaneEdgeColours[i]);
                     }
                     else
                     {
                         ColourRow("轨道边框色", ref Cfg.LaneEdgeColour);
                     }
                     Slider("边框粗细 (px)", ref Cfg.LaneEdgePx, 1f, 12f, "F0");
-                    GUILayout.Label("边框就是轨道两侧那条线。3D 下轨道体是一叠横带拼的，边线盖住的");
-                    GUILayout.Label("横带台阶越多，边看着越干净——所以锯齿明显时先把这里调粗试试。");
+                    L("边框就是轨道两侧那条线。3D 下轨道体是一叠横带拼的，边线盖住的");
+                    L("横带台阶越多，边看着越干净——所以锯齿明显时先把这里调粗试试。");
                   }
                 }
 
@@ -304,8 +355,8 @@ namespace LaneReader
                     if (Cfg.NoteSeparate)
                     {
                         for (int i = 0; i < 4; i++)
-                            ColourRow("轨道 " + (i + 1) + " 音符", ref Cfg.NoteColours[i]);
-                        GUILayout.Label("默认 1/2 轨同色、3/4 轨同色 = 原来的左右手配色。");
+                            ColourRow(L10n.Tr("轨道") + " " + (i + 1) + " " + L10n.Tr("音符"), ref Cfg.NoteColours[i]);
+                        L("默认 1/2 轨同色、3/4 轨同色 = 原来的左右手配色。");
                     }
                     else
                     {
@@ -316,13 +367,13 @@ namespace LaneReader
                     if (Cfg.NoteEdgeSeparate)
                     {
                         for (int i = 0; i < 4; i++)
-                            ColourRow("轨道 " + (i + 1) + " 音符边框", ref Cfg.NoteEdgeColours[i]);
+                            ColourRow(L10n.Tr("轨道") + " " + (i + 1) + " " + L10n.Tr("音符边框"), ref Cfg.NoteEdgeColours[i]);
                     }
                     else
                     {
                         ColourRow("音符边框色", ref Cfg.NoteEdgeColour);
                     }
-                    GUILayout.Label("显示开关和粗细在「显示」区里。");
+                    L("显示开关和粗细在「显示」区里。");
                   }
                 }
 
@@ -344,7 +395,7 @@ namespace LaneReader
                     ColourRow("细线（每拍）", ref Cfg.BeatLineColour);
                     ColourRow("粗线（每小节）", ref Cfg.BarLineColour);
                     Slider("线总透明度", ref Cfg.BeatLineAlpha, 0f, 1f, "F3");
-                    GUILayout.Label("粗线另外再乘 1.8，所以它比细线显眼；把粗线颜色 A 调低就能拉平。");
+                    L("粗线另外再乘 1.8，所以它比细线显眼；把粗线颜色 A 调低就能拉平。");
                   }
                 }
 
@@ -352,12 +403,12 @@ namespace LaneReader
                 {
                   using (Indent())
                   {
-                    GUILayout.Label("长按的中间那段线条。要和普通音符一样单独配色就打开下面的开关。");
+                    L("长按的中间那段线条。要和普通音符一样单独配色就打开下面的开关。");
                     ColourToggle("长按线条", ref Cfg.HoldSeparate);
                     if (Cfg.HoldSeparate)
                     {
                         for (int i = 0; i < 4; i++)
-                            ColourRow("轨道 " + (i + 1) + " 长按", ref Cfg.HoldColours[i]);
+                            ColourRow(L10n.Tr("轨道") + " " + (i + 1) + " " + L10n.Tr("长按"), ref Cfg.HoldColours[i]);
                     }
                     else
                     {
@@ -392,59 +443,59 @@ namespace LaneReader
             {
               using (Indent())
               {
-                GUILayout.Label("轨道顺序: D  F  J  K");
+                L("轨道顺序: D  F  J  K");
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("手法", GUILayout.Width(LabelWidth));
-                if (GUILayout.Button(FingeringName(Cfg.FingeringMode), GUILayout.Width(160f)))
+                L("手法", GUILayout.Width(LabelWidth));
+                if (Btn(FingeringName(Cfg.FingeringMode), GUILayout.Width(160f)))
                     Cfg.FingeringMode = (Cfg.FingeringMode + 1) % 3;
                 GUILayout.EndHorizontal();
-                GUILayout.Label("点一下换一种，三种手法没有绝对好坏：");
+                L("点一下换一种，三种手法没有绝对好坏：");
                 if (Cfg.FingeringMode == 1)
                 {
-                    GUILayout.Label("· 拆手序（移植自 ReADOFAIMacro，MIT）：基于节拍、依赖原曲 BPM，");
-                    GUILayout.Label("  强拍给主手、弱拍给副手，手序最合理，双押和轮指都能处理；");
-                    GUILayout.Label("  但三连音交互会很灾难——窗口按 180° 切，三条 1/3 拍的音只在");
-                    GUILayout.Label("  归一化缩放正好为 1 时才凑成一个窗口，否则边界落进组里，整段错位。");
+                    L("· 拆手序（移植自 ReADOFAIMacro，MIT）：基于节拍、依赖原曲 BPM，");
+                    L("  强拍给主手、弱拍给副手，手序最合理，双押和轮指都能处理；");
+                    L("  但三连音交互会很灾难——窗口按 180° 切，三条 1/3 拍的音只在");
+                    L("  归一化缩放正好为 1 时才凑成一个窗口，否则边界落进组里，整段错位。");
                     GUILayout.BeginHorizontal();
-                    if (GUILayout.Button("参考实现 ReADOFAIMacro（GitHub）", GUILayout.Width(240f)))
+                    if (Btn("参考实现 ReADOFAIMacro（GitHub）", GUILayout.Width(240f)))
                     {
                         try { Application.OpenURL(ReferenceMacro); }
                         catch (Exception ex) { Logger.Log("OpenURL failed: " + ex.Message); }
                     }
-                    GUILayout.Label(ReferenceMacro);
+                    L(ReferenceMacro);
                     GUILayout.EndHorizontal();
                 }
                 else if (Cfg.FingeringMode == 2)
                 {
-                    GUILayout.Label("· 时间重置法：和谱面 BPM 完全无关，只有「换手时间」一个概念，");
-                    GUILayout.Label("  各种奇怪节拍都能处理；但每次一定从主手开始，不看强弱拍、");
-                    GUILayout.Label("  不考虑节奏，只考虑怎么让手指舒服。");
+                    L("· 时间重置法：和谱面 BPM 完全无关，只有「换手时间」一个概念，");
+                    L("  各种奇怪节拍都能处理；但每次一定从主手开始，不看强弱拍、");
+                    L("  不考虑节奏，只考虑怎么让手指舒服。");
                 }
                 else
                 {
-                    GUILayout.Label("· AdoFalling 原版：只看相邻音的间隔，密集段整条手序就是楼梯，");
-                    GUILayout.Label("  处理不了双押（同时的两颗音只能挤在一起）。");
+                    L("· AdoFalling 原版：只看相邻音的间隔，密集段整条手序就是楼梯，");
+                    L("  处理不了双押（同时的两颗音只能挤在一起）。");
                 }
 
                 GUILayout.BeginHorizontal();
-                if (GUILayout.Button("刷新手序", GUILayout.Width(160f)))
+                if (Btn("刷新手序", GUILayout.Width(160f)))
                     _planFingerprint = double.NaN;
-                GUILayout.Label("改了设置或换谱后手序没更新时点它。");
+                L("改了设置或换谱后手序没更新时点它。");
                 GUILayout.EndHorizontal();
 
                 Slider("双押合并 (毫秒)", ref Cfg.MergeRollMs, 0f, 150f, "F0");
-                GUILayout.Label("间隔小于它的两颗音当作双押：后一颗移到和前一颗同一行；0 = 关。");
-                GUILayout.Label("三种手法都有效果；长条的尾音不参与（它必须留在长条末端）。");
+                L("间隔小于它的两颗音当作双押：后一颗移到和前一颗同一行；0 = 关。");
+                L("三种手法都有效果；长条的尾音不参与（它必须留在长条末端）。");
 
                 if (Cfg.FingeringMode == 1)
                 {
                     Slider("最大硬抗 BPM", ref Cfg.MaxHardResistBpm, 400f, 1200f, "F0");
-                    GUILayout.Label("超过它就减半一次窗口（参考实现原样；越低越偏轮指）。");
-                    GUILayout.Label("读不到谱面 BPM 时基准是 800：设成 850 就不减半（base 800），");
-                    GUILayout.Label("设成 506 会减半（base 400，轮指更多）。");
+                    L("超过它就减半一次窗口（参考实现原样；越低越偏轮指）。");
+                    L("读不到谱面 BPM 时基准是 800：设成 850 就不减半（base 800），");
+                    L("设成 506 会减半（base 400，轮指更多）。");
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("轮指方向", GUILayout.Width(LabelWidth));
-                    if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
+                    L("轮指方向", GUILayout.Width(LabelWidth));
+                    if (Btn(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
                             GUILayout.Width(160f)))
                         Cfg.OuterRoll = !Cfg.OuterRoll;
                     GUILayout.EndHorizontal();
@@ -452,13 +503,13 @@ namespace LaneReader
                 else if (Cfg.FingeringMode == 2)
                 {
                     Slider("主手重置间隔 (毫秒)", ref Cfg.ResetMs, 60f, 800f, "F0");
-                    GUILayout.Label("只看音符间隔，不看谱面 BPM。");
-                    GUILayout.Label("超过它 = 单指慢慢点；一半到它之间 = 主手强拍、副手弱拍；");
-                    GUILayout.Label("小于一半 = 主手轮指，更密 = 双手轮指。");
-                    GUILayout.Label("长条的尾音永远跟在头的那条轨道上。");
+                    L("只看音符间隔，不看谱面 BPM。");
+                    L("超过它 = 单指慢慢点；一半到它之间 = 主手强拍、副手弱拍；");
+                    L("小于一半 = 主手轮指，更密 = 双手轮指。");
+                    L("长条的尾音永远跟在头的那条轨道上。");
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("轮指方向", GUILayout.Width(LabelWidth));
-                    if (GUILayout.Button(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
+                    L("轮指方向", GUILayout.Width(LabelWidth));
+                    if (Btn(Cfg.OuterRoll ? "外轮 K J D F" : "内轮 J K F D",
                             GUILayout.Width(160f)))
                         Cfg.OuterRoll = !Cfg.OuterRoll;
                     GUILayout.EndHorizontal();
@@ -466,7 +517,7 @@ namespace LaneReader
                 else
                 {
                     Slider("轮指窗口 (毫秒)", ref Cfg.RollWindowMs, 40f, 400f, "F0");
-                    GUILayout.Label("间隔小于窗口 = 轮指；大于 = 食指交替。");
+                    L("间隔小于窗口 = 轮指；大于 = 食指交替。");
                 }
               }
             }
@@ -477,7 +528,7 @@ namespace LaneReader
               using (Indent())
               {
                 Slider("时间偏移 (秒)", ref Cfg.TimeOffsetSeconds, -1f, 1f, "F4");
-                GUILayout.Label("只影响叠加层显示，不动游戏判定。");
+                L("只影响叠加层显示，不动游戏判定。");
               }
             }
 
@@ -490,23 +541,23 @@ namespace LaneReader
                 if (Cfg.ThreeDLanes)
                 {
                     Slider("透视强度", ref Cfg.ThreeDStrength, 0.3f, 3f, "F2");
-                    GUILayout.Label("灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；");
-                    GUILayout.Label("音符越靠近灭点越窄越矮，越靠近判定线越大越快。判定线/判定框/标签都在");
-                    GUILayout.Label("判定线这一端，不受影响。强度 = 判定线到「缩到一半」的距离的倒数：");
-                    GUILayout.Label("1.00 时音符在判定线附近的屏幕速度和关掉 3D 时一样。");
-                    GUILayout.Label("轨道体是一叠横带拼出来的（IMGUI 只能填轴对齐矩形），两侧边线是真的直线；");
-                    GUILayout.Label("把「外观 / 颜色 → 轨道 → 边框粗细」调粗一点，边线就能把横带的台阶盖住，");
-                    GUILayout.Label("锯齿会更不明显（默认已经比上一版粗 1px）。");
-                    GUILayout.Label("（试过用投影矩阵让显卡直接做透视，IMGUI 不接受那个用法，已删。）");
+                    L("灭点就在轨道顶端（= 判定线上方「轨道长度」那么远），四条轨道向它收敛；");
+                    L("音符越靠近灭点越窄越矮，越靠近判定线越大越快。判定线/判定框/标签都在");
+                    L("判定线这一端，不受影响。强度 = 判定线到「缩到一半」的距离的倒数：");
+                    L("1.00 时音符在判定线附近的屏幕速度和关掉 3D 时一样。");
+                    L("轨道体是一叠横带拼出来的（IMGUI 只能填轴对齐矩形），两侧边线是真的直线；");
+                    L("把「外观 / 颜色 → 轨道 → 边框粗细」调粗一点，边线就能把横带的台阶盖住，");
+                    L("锯齿会更不明显（默认已经比上一版粗 1px）。");
+                    L("（试过用投影矩阵让显卡直接做透视，IMGUI 不接受那个用法，已删。）");
                 }
 
                 Toggle("长按（hold）支持", ref Cfg.HoldSupport);
                 if (Cfg.HoldSupport)
                 {
-                    GUILayout.Label("读 scrFloor.holdLength 画长按长条：长条末端正好接上下一颗音符的开头");
-                    GUILayout.Label("（和游戏自己一样，游戏的 hold 尾就是下一块砖）；");
-                    GUILayout.Label("拆手序还会把松手当成一颗键，强制和长按开头同轨；长按结尾那颗音符也");
-                    GUILayout.Label("强制回到同一条轨道（手指还按着，它只能在原地）。颜色在「外观 / 颜色 → 长按」。");
+                    L("读 scrFloor.holdLength 画长按长条：长条末端正好接上下一颗音符的开头");
+                    L("（和游戏自己一样，游戏的 hold 尾就是下一块砖）；");
+                    L("拆手序还会把松手当成一颗键，强制和长按开头同轨；长按结尾那颗音符也");
+                    L("强制回到同一条轨道（手指还按着，它只能在原地）。颜色在「外观 / 颜色 → 长按」。");
                 }
 
                 Toggle("平滑下落（重影拖尾）", ref Cfg.SmoothFalling);
@@ -515,11 +566,11 @@ namespace LaneReader
                     IntSlider("拖尾层数", ref Cfg.SmoothGhosts, 1, 24);
                     Slider("拖尾长度 (毫秒)", ref Cfg.SmoothTrailMs, 4f, 200f, "F0");
                     Slider("拖尾浓度", ref Cfg.SmoothStrength, 0f, 1f, "F2");
-                    GUILayout.Label("音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），拖尾就是");
-                    GUILayout.Label("把那一段固定时间里的位置淡着补画出来，让眼睛读成运动而不是跳。");
-                    GUILayout.Label("长度是固定的毫秒数、层数只决定密不密——按「上一帧走了多远」来铺会让整个");
-                    GUILayout.Label("拖尾随帧时间忽长忽短，那就是之前一卡一卡的原因。");
-                    GUILayout.Label("采样冻结时（暂停、结算）不会画拖尾。纯观感，不影响时间轴。");
+                    L("音符位置本来每帧才采一次样（60fps / 1000px/s 时一帧跳约 17px），拖尾就是");
+                    L("把那一段固定时间里的位置淡着补画出来，让眼睛读成运动而不是跳。");
+                    L("长度是固定的毫秒数、层数只决定密不密——按「上一帧走了多远」来铺会让整个");
+                    L("拖尾随帧时间忽长忽短，那就是之前一卡一卡的原因。");
+                    L("采样冻结时（暂停、结算）不会画拖尾。纯观感，不影响时间轴。");
                 }
 
                 Toggle("补帧（叠加前后帧）", ref Cfg.FrameBlendEnabled);
@@ -527,10 +578,10 @@ namespace LaneReader
                 {
                     Slider("前后帧透明度", ref Cfg.FrameBlendAlpha, 0f, 1f, "F2");
                     Slider("前后帧间隔 (帧)", ref Cfg.FrameBlendOffset, 0.1f, 4f, "F2");
-                    GUILayout.Label("把上一帧和下一帧的位置各按这个透明度画一遍，再把当前帧画在上面，共 3 帧；");
-                    GUILayout.Label("「一帧」取实测帧时间，所以帧率变化时前后帧的距离不会跟着变。");
-                    GUILayout.Label("只叠会动的东西（音符/拖尾/长按/小节线），轨道和判定线画一次。");
-                    GUILayout.Label("暂停、结算时不叠。开着它每帧画 3 遍，帧数紧张就关掉。");
+                    L("把上一帧和下一帧的位置各按这个透明度画一遍，再把当前帧画在上面，共 3 帧；");
+                    L("「一帧」取实测帧时间，所以帧率变化时前后帧的距离不会跟着变。");
+                    L("只叠会动的东西（音符/拖尾/长按/小节线），轨道和判定线画一次。");
+                    L("暂停、结算时不叠。开着它每帧画 3 遍，帧数紧张就关掉。");
                 }
 
                 // ---- 娱乐（纯好玩，不影响读谱）----
@@ -543,21 +594,21 @@ namespace LaneReader
                     {
                         Slider("乱飞幅度 (px)", ref Cfg.FunFlyAmplitudePx, 0f, 900f, "F0");
                         Slider("乱飞速度", ref Cfg.FunFlySpeed, 0.02f, 3f, "F2");
-                        GUILayout.Label("每条轨道走自己的 Perlin 噪声路径（平滑漂移，不是抖），轨道和它的音符一起走。");
+                        L("每条轨道走自己的 Perlin 噪声路径（平滑漂移，不是抖），轨道和它的音符一起走。");
                     }
 
                     Toggle("轨道持续旋转", ref Cfg.FunSpin);
                     if (Cfg.FunSpin)
                     {
                         Slider("旋转速度 (度/秒)", ref Cfg.FunSpinSpeed, 5f, 180f, "F0");
-                        GUILayout.Label("整个叠加层绕判定线中点转，叠加在「整体旋转」的角度上；关掉就回到你设的角度。");
+                        L("整个叠加层绕判定线中点转，叠加在「整体旋转」的角度上；关掉就回到你设的角度。");
                     }
 
                     Toggle("四花瓣（四条轨道互相垂直）", ref Cfg.FunPetals);
                     if (Cfg.FunPetals)
                     {
-                        GUILayout.Label("四条轨道的底部中心都在判定线中点，各绕它转 0/90/180/270 度，");
-                        GUILayout.Label("所以朝四个互相垂直的方向伸出去，中间没有方块。");
+                        L("四条轨道的底部中心都在判定线中点，各绕它转 0/90/180/270 度，");
+                        L("所以朝四个互相垂直的方向伸出去，中间没有方块。");
                     }
                   }
                 }
@@ -569,12 +620,12 @@ namespace LaneReader
             {
               using (Indent())
               {
-                if (GUILayout.Button("切换键: " + Cfg.Key, GUILayout.Width(200f)))
+                if (Btn(L10n.Tr("切换键: ") + Cfg.Key, GUILayout.Width(200f)))
                     Cfg.ToggleKey = NextKey(Cfg.ToggleKey);
                 Toggle("输出诊断日志", ref Cfg.DebugLog);
 
                 GUILayout.BeginHorizontal();
-                if (GUILayout.Button("打开 GitHub 页面", GUILayout.Width(160f)))
+                if (Btn("打开 GitHub 页面", GUILayout.Width(160f)))
                 {
                     // The same address UMM itself shows a link button for, taken from Info.json's
                     // HomePage; kept here too, so the link is reachable from the mod's own panel (and
@@ -582,16 +633,16 @@ namespace LaneReader
                     try { Application.OpenURL(HomePage); }
                     catch (Exception ex) { Logger.Log("OpenURL failed: " + ex.Message); }
                 }
-                GUILayout.Label(HomePage);
+                L(HomePage);
                 GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
-                if (GUILayout.Button("恢复默认", GUILayout.Width(110f)))
+                if (Btn("恢复默认", GUILayout.Width(110f)))
                     Cfg = new Settings();
-                if (GUILayout.Button("保存", GUILayout.Width(110f)))
+                if (Btn("保存", GUILayout.Width(110f)))
                     Cfg.Save(modEntry);
                 GUILayout.EndHorizontal();
-                GUILayout.Label("改动即时生效；「保存」写进 Settings.json，关面板时 UMM 也会自动保存。");
+                L("改动即时生效；「保存」写进 Settings.json，关面板时 UMM 也会自动保存。");
               }
             }
 
@@ -609,6 +660,21 @@ namespace LaneReader
         /// they ran together without it.
         /// </summary>
         private const float RowGap = 6f;
+
+        /// <summary>
+        /// A panel label and a panel button. Everything the panel draws goes through these two, so
+        /// the Chinese text in the code doubles as the lookup key for the language files - see
+        /// Localization.cs.
+        /// </summary>
+        private static void L(string text, params GUILayoutOption[] options)
+        {
+            GUILayout.Label(L10n.Tr(text), options);
+        }
+
+        private static bool Btn(string text, params GUILayoutOption[] options)
+        {
+            return GUILayout.Button(L10n.Tr(text), options);
+        }
 
         /// <summary>How far each nesting level of the options pushes its contents right.</summary>
         private const float IndentWidth = 16f;
@@ -634,7 +700,7 @@ namespace LaneReader
             GUILayout.Space(6f);
             GUILayout.BeginHorizontal();
             float width = Mathf.Max(120f, HeaderWidth - _indentLevel * IndentWidth);
-            if (GUILayout.Button((open ? "▼ " : "▶ ") + title, GUILayout.Width(width)))
+            if (Btn((open ? "▼ " : "▶ ") + L10n.Tr(title), GUILayout.Width(width)))
                 open = !open;
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
@@ -673,8 +739,8 @@ namespace LaneReader
         private static void Toggle(string label, ref bool value)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(LabelWidth));
-            value = GUILayout.Toggle(value, value ? "开" : "关", GUILayout.Width(80f));
+            L(label, GUILayout.Width(LabelWidth));
+            value = GUILayout.Toggle(value, L10n.Tr(value ? "开" : "关"), GUILayout.Width(80f));
             GUILayout.EndHorizontal();
             GUILayout.Space(RowGap);
         }
@@ -689,7 +755,7 @@ namespace LaneReader
         private static void Slider(string label, ref float value, float min, float max, string format)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(LabelWidth));
+            L(label, GUILayout.Width(LabelWidth));
 
             float dragged = GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(SliderWidth));
             if (dragged != value)
@@ -726,7 +792,7 @@ namespace LaneReader
         private static void IntSlider(string label, ref int value, int min, int max)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(LabelWidth));
+            L(label, GUILayout.Width(LabelWidth));
 
             int dragged = Mathf.RoundToInt(
                 GUILayout.HorizontalSlider(value, min, max, GUILayout.Width(SliderWidth)));
@@ -768,7 +834,7 @@ namespace LaneReader
         private static void ColourRow(string label, ref Color c)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(126f));
+            L(label, GUILayout.Width(126f));
 
             c.r = Channel("R", c.r);
             c.g = Channel("G", c.g);
@@ -803,7 +869,7 @@ namespace LaneReader
 
         private static float Channel(string axis, float v)
         {
-            GUILayout.Label(axis, GUILayout.Width(13f));
+            L(axis, GUILayout.Width(13f));
             return GUILayout.HorizontalSlider(v, 0f, 1f, GUILayout.Width(54f));
         }
 
@@ -811,8 +877,8 @@ namespace LaneReader
         private static void ColourToggle(string label, ref bool value)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(126f));
-            value = GUILayout.Toggle(value, value ? "四轨单独" : "四轨统一", GUILayout.Width(90f));
+            L(label, GUILayout.Width(126f));
+            value = GUILayout.Toggle(value, L10n.Tr(value ? "四轨单独" : "四轨统一"), GUILayout.Width(90f));
             GUILayout.EndHorizontal();
             GUILayout.Space(RowGap);
         }

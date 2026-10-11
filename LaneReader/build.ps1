@@ -65,6 +65,17 @@ if ($Install) {
     # not ASCII, are matched by wildcard so this script never has to hold a non-ASCII literal
     # (it is saved without a BOM, and PowerShell 5.1 would read one as GBK mojibake).
     Get-ChildItem (Join-Path $here "Mod") -Filter "*.txt" | Copy-Item -Destination $dest -Force
+    # Language files: en.txt doubles as the template for every other language. Copied only when
+    # missing, so a translation the player edited - or added - is never overwritten.
+    $langSrc = Join-Path $here "Mod\lang"
+    if (Test-Path $langSrc) {
+        $langDst = Join-Path $dest "lang"
+        New-Item -ItemType Directory -Force -Path $langDst | Out-Null
+        Get-ChildItem $langSrc -Filter "*.txt" | ForEach-Object {
+            $target = Join-Path $langDst $_.Name
+            if (-not (Test-Path $target)) { Copy-Item $_.FullName $target -Force }
+        }
+    }
     # The demo sprites are only staged when there is not one already: they are meant to be replaced
     # by the player's own images, and -Install must not overwrite that.
     foreach ($demo in @("note.png", "hold.png")) {

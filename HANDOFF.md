@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 ---
 
-## 4. 架构：七个文件
+## 4. 架构：十个文件
 
 ### `Plugin.cs` — 入口 + 渲染 + 设置面板
 
@@ -129,6 +129,13 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 间隔小于阈值的两颗音当作一次双押，后一颗移到和前一颗同一时刻。与手指分配无关，所以在
 三种手法之后统一跑。详见 §19。
+
+---
+
+### `Localization.cs` — 面板多语言
+
+中文内置（代码里的中文原文就是 key），英文在 `Mod\lang\en.txt`；复制它只翻译右列就能加语言。
+详见 §20。
 
 ---
 
@@ -1072,6 +1079,11 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   （否则重算会吃到上一次合并过的 0 间隔 —— 那在拆手序里会被读成一个巨大的窗口）。
   面板手序介绍改成只显示当前模式，设置行之间加空行（`RowGap`，加在 Toggle/Slider/
   IntSlider/ColourRow/ColourToggle 的末尾）。§19 是新的一节。dll 74,240 字节。
+- 2026-10-11（1.1.0）：**面板多语言**（`Localization.cs`，§20）。中文内置 —— **key 就是代码里的
+  中文原文**，所以中文不需要文件、也不会缺条目；英文 `Mod\lang\en.txt`（188 个 key 全部有译文），
+  复制它只翻译右列即可加语言。面板顶部语言按钮循环 `lang\*.txt`，首次运行跟随
+  `Application.systemLanguage`（非中文 → en），选择存进 `Settings.json` 的 `Language`。
+  `build.ps1` 只在缺失时复制语言文件。dll 77,312 字节。
 
 ## 18. 时间重置法（`TimeResetPlanner.cs`，2026-10-11）
 
@@ -1191,6 +1203,28 @@ TimeResetCheck.exe <dump> 165 [inner]  # 参考宏 dump（TSX/TS 行）整首走
 - 「双押合并」滑块放在「排键（手序）」的公共位置（三种手法共用）。
 - 设置行之间加空行：`RowGap`（6px）加在 `Toggle` / `Slider` / `IntSlider` / `ColourRow` /
   `ColourToggle` 的末尾，一处改动覆盖整个面板。
+
+## 20. 面板多语言（`Localization.cs`，1.1.0）
+
+**key 就是中文原文**：面板里每个字都走 `L10n.Tr(text)`，查到就用译文，查不到原样返回 ——
+中文因此不需要任何文件（代码里的中文就是兜底），任何语言缺条目也不会变空白。
+
+- 入口：`Plugin.L`（Label）与 `Plugin.Btn`（Button）两个包装，面板里的 `GUILayout.Label(` /
+  `GUILayout.Button(` 全部换成了它们；`Section` 的标题在拼 ▶/▼ 之前先 `Tr`，
+  `Toggle`/`Slider`/`IntSlider`/`ColourRow`/`ColourToggle` 里的标签走 `L(...)`。
+  开关上的字（开/关、四轨单独/四轨统一）是 `GUILayout.Toggle` 的第二个参数，单独 `L10n.Tr`。
+- 动态文字拆成固定前后缀再查表：`"状态: " + …`、`"当前主题: " + …`、`"轨道 N 底色"`（拆成
+  `轨道` / `底色` 两条）。
+- 文件：`<mod>\lang\<code>.txt`，UTF-8，一行一条，**制表符分隔** —— 原文里常带 ` = `
+  （`轨道长度 (px, 0=自动到屏幕顶)`、`间隔小于窗口 = 轮指；大于 = 食指交替。`），用 `=` 会歧义；
+  不含 ` = ` 的 key 也接受 ` = ` 手写。`#` / `;` 是注释，值里的 `\n` 是换行，
+  **行首空格属于 key**（那是面板的缩进）。
+- 选择：`Settings.Language`，留空 = 跟随 `Application.systemLanguage`（非中文 → `en`）；
+  顶部按钮在 `L10n.Available`（zh + `lang\*.txt`）之间循环，每次切换重新扫目录（丢文件进去不用重启）。
+- 安装：`build.ps1` **只在目标缺失时**复制 `lang\*.txt`（和示例图片同一条规矩），玩家改过的
+  译文不会被覆盖。
+- 校验方式：把源码里所有含中日韩字符的字面量抽出来，和 `en.txt` 的 key 求差集。
+  1.1.0 时 188 个 key 全部命中（`中文` 是语言按钮自己的名字，用不到但留着无妨）。
 
 
 > 长按的验收要点（本机谱面数据里如果没有 hold 砖，日志里不会有 `chart holds:` 那行）：
