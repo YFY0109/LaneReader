@@ -52,8 +52,8 @@ namespace LaneReader
     /// </summary>
     public sealed class TimeResetPlanner
     {
-        /// <summary>Milliseconds. One chart beat at 150 BPM; see Settings.ResetMs.</summary>
-        public const double DefaultResetMs = 300.0;
+        /// <summary>Milliseconds. What 1.0.1 ships as the default; see Settings.ResetMs.</summary>
+        public const double DefaultResetMs = 165.0;
 
         // The four keys, named for the role the rules give them.
         private const int OffRoll = (int)Finger.LeftMiddle;    // D

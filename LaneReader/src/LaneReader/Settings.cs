@@ -384,11 +384,14 @@ namespace LaneReader
 
         /// <summary>
         /// Which fingering to use: 0 = AdoFalling's original planner (what this mod shipped
-        /// with), 1 = the hand-split planner ported from ReADOFAIMacro. See
-        /// <see cref="HandPlanner"/>. The hand-split planner is the default: it is the one that
-        /// was tuned against real play.
+        /// with), 1 = the hand-split planner ported from ReADOFAIMacro, 2 = the time-reset planner.
+        /// See <see cref="HandPlanner"/> and <see cref="TimeResetPlanner"/>.
+        ///
+        /// The time-reset planner is the default from 1.0.1, because it is the one that reads the
+        /// intervals alone: it does not care what the chart's tempo is doing, only how fast the
+        /// notes actually arrive.
         /// </summary>
-        public int FingeringMode = 1;
+        public int FingeringMode = 2;
 
         /// <summary>
         /// The hard-resist limit the hand-split planner works against: passing it halves the
@@ -408,10 +411,11 @@ namespace LaneReader
         ///
         /// A note that arrives more than this after the last main-hand note goes to the main hand
         /// again (slow enough for one finger); half of it or less and that same hand rolls; between
-        /// the two the other hand takes the note. 300 ms is one beat at 150 BPM, which puts eighth
-        /// notes on alternating hands and sixteenths on a roll.
+        /// the two the other hand takes the note. At 165 ms and 150 BPM, eighth notes (200 ms) stay
+        /// on one finger and sixteenths (100 ms) alternate hands; 82 ms and below rolls. This is the
+        /// player's own tuning: the boundary sits just under a 150 BPM eighth note.
         /// </summary>
-        public float ResetMs = 300f;
+        public float ResetMs = 165f;
 
         /// <summary>
         /// Roll direction: true starts each hand on its middle finger (K J D F, the "outer"

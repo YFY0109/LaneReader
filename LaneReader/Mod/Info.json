@@ -2,7 +2,7 @@
   "Id": "LaneReader",
   "DisplayName": "LaneReader (4K view)",
   "Author": "fallingCB",
-  "Version": "1.0.0",
+  "Version": "1.0.1",
   "AssemblyName": "LaneReader.dll",
   "EntryMethod": "LaneReader.Plugin.Load",
   "HomePage": "https://github.com/fallingCB/LaneReader"

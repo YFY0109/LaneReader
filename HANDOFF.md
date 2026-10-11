@@ -491,12 +491,13 @@ alpha: 1 - t*t                     // 渐透明
 
 ## 14. 拆手序（`HandPlanner.cs`）
 
-设置面板「排键」里切换手法，**默认仍是 AdoFalling 原版**：
+设置面板「排键」里切换手法，**1.0.1 起默认是时间重置法**（0.3.0 起是拆手序，更早是 AdoFalling 原版）：
 
 | 手法 | 实现 | 说明 |
 |---|---|---|
 | AdoFalling 原版 | `FingeringPlanner.cs` | 间隔 < 窗口 (±1 走格)，否则 F/J 交替 |
 | 拆手序 | `HandPlanner.cs` | 移植 [ReADOFAIMacro](https://github.com/TonyLimps/ReADOFAIMacro)（MIT） |
+| 时间重置法（默认） | `TimeResetPlanner.cs` | 只看音符间隔的因果状态机，一个参数；见 §18 |
 
 ### 它的模型
 
@@ -1047,10 +1048,15 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   里逐条列出三种手法各自的优势与劣势，附 [ReADOFAIMacro](https://github.com/TonyLimps/ReADOFAIMacro)
   的可点击外链。README 重写（三种手法对照表、时间重置法规则与离线实测表、默认设置表）。
   dll 72,704 字节。
+- 2026-10-11（1.0.1）：**默认手法改成时间重置法**（`FingeringMode` 默认 2）、
+  **`ResetMs` 默认 300 → 165ms**；`Info.json` 与安装说明升到 1.0.1，README 和 §18 的实测表
+  按 R = 165ms 跑（均匀间隔分界 82/165ms；50+50+100 锁成 JKF，100+100+200 是 JFJ）。
+  这一版中间改过两次默认值（150 → 200 → 165），都直接改在同一个版号里，不另发版本。
+  dll 仍 72,704 字节。
 
 ## 18. 时间重置法（`TimeResetPlanner.cs`，2026-10-11）
 
-`FingeringMode = 2`。**只看音符间隔，一个参数**（`ResetMs`，默认 300ms），不读谱面 BPM、
+`FingeringMode = 2`。**只看音符间隔，一个参数**（`ResetMs`，1.0.1 起默认 165ms），不读谱面 BPM、
 不读角度、不做任何分组。这是对 §6.7.1 那个「3 分音永远排不对」问题的正面处理：旧算法先把音
 积累成 180° 的窗口，窗口的度被 `2^k/速度` 缩放，所以三条 1/3 拍的音只在缩放正好为 1 时才凑成
 一个窗口；其余情况下边界落进组中间，还把组后面那颗音一起吞进去，整段手序从此错位一位。
@@ -1084,26 +1090,26 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   `0.45 - 0.3 = 0.15000000000000002`，判定在边界两边逐音乱翻（离线实测 g = 150ms 打出来是
   `JKFJKFJFDJKFJKJK`，加 1ns 容差后干净地是 `JKFD`）。`HandPlanner.RoundOff` 同因同值。
 
-### 离线实测（`tools/TimeResetCheck.cs`，R = 300ms）
+### 离线实测（`tools/TimeResetCheck.cs`，R = 165ms）
 
 均匀间隔只有三档，分界正好是 R 和 R/2（没有 R/4 档）：
 
 | 均匀间隔 g | 周期 | 内轮 | 外轮 |
 |---|---|---|---|
-| g > R | 1 | J… | J… |
-| R/2 < g ≤ R | 2 | JF | JF |
-| g ≤ R/2 | 4 | JKFD | KJDF |
+| g > R（>165ms） | 1 | J… | J… |
+| R/2 < g ≤ R（83~165ms） | 2 | JF | JF |
+| g ≤ R/2（≤82ms） | 4 | JKFD | KJDF |
 
-三连音（组内快、组间有口气）锁成 **JKF** —— 正是旧算法排不对的音型：
+三连音要锁成 **JKF**，需要**组内 ≤ R/2、组间 > R/2**（R = 165ms 时锁得住的是 50+50+100 这种）：
 
 | 音型 (ms) | 内轮 | 外轮 |
 |---|---|---|
-| 100+100+200 | JKF 循环 | KJF 循环 |
-| 100+100+300 | JKF 循环 | KJF 循环 |
-| 125+125+250 | JKF 循环 | KJF 循环 |
-| 200+200+400 | JFJ 循环 | JFJ 循环 |
-| 250+250+500 | JFJ 循环 | JFJ 循环 |
-| 100×4（等分） | JKFD | KJDF |
+| 50+50+100（更快） | JKF 循环 | KJF 循环 |
+| 100+100+200 | JFJ 循环 | JFJ 循环 |
+| 100+100+300 | JFJ 循环 | JFJ 循环 |
+| 125+125+250 | JFJ 循环 | JFJ 循环 |
+| 200+200+400 | J 连点 | J 连点 |
+| 100×4（等分） | JFJF | JFJF |
 | 50+400 | JKJK（**副手全程不动**） | KJKJ |
 
 最后一行要知道：一趟「快 50ms 双击、再隔 400ms」的音型，主轮之后 `d > R` 就回落主手，
@@ -1118,13 +1124,13 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 cd LaneReader\tools
 csc /nologo /target:exe /langversion:5 /out:TimeResetCheck.exe TimeResetCheck.cs `
     ..\src\LaneReader\TimeResetPlanner.cs ..\src\LaneReader\FingeringPlanner.cs
-TimeResetCheck.exe                     # 内置表（均匀间隔 / 三连音 / 长条）
-TimeResetCheck.exe <dump> 300 [inner]  # 参考宏 dump（TSX/TS 行）整首走一遍
+TimeResetCheck.exe 165                 # 内置表（均匀间隔 / 音型 / 长条；不填按 300）
+TimeResetCheck.exe <dump> 165 [inner]  # 参考宏 dump（TSX/TS 行）整首走一遍
 ```
 
 面板：「排键（手序）」→ 手法按钮点三下循环 原版 → 拆手序 → **时间重置法**；选中它有
 「主手重置间隔 (毫秒)」和「轮指方向」。日志行：
-`time reset: 300ms reset, inner roll, D=.. F=.. J=.. K=.., N presses (M hold tails), X hand switches, <手指序列>`。
+`time reset: 165ms reset, inner roll, D=.. F=.. J=.. K=.., N presses (M hold tails), X hand switches, <手指序列>`。
 
 
 > 长按的验收要点（本机谱面数据里如果没有 hold 砖，日志里不会有 `chart holds:` 那行）：

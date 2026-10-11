@@ -19,8 +19,9 @@ namespace LaneReader
 /// <summary>
 /// Offline verifier for <see cref="TimeResetPlanner"/>.
 ///
-///   TimeResetCheck                 - the built-in suite: uniform gaps, the figures that made the
-///                                    hand-split planner misbehave, and holds
+///   TimeResetCheck [resetMs]        - the built-in suite at that reset interval (default 300):
+///                                    uniform gaps, the figures that made the hand-split planner
+///                                    misbehave, and holds
 ///   TimeResetCheck &lt;dump&gt; &lt;resetMs&gt; [inner]
 ///                                  - replay a reference-macro dump (TSX/TS lines, same format
 ///                                    HandPlanCheck reads) through the planner
@@ -32,32 +33,41 @@ internal static class TimeResetCheck
         if (args.Length >= 2 && File.Exists(args[0]))
             return Dump(args);
 
-        Suite();
+        // Optional first argument: the reset interval to run the suite at.
+        double resetMs = 300.0;
+        if (args.Length >= 1)
+            double.TryParse(args[0], NumberStyles.Float, CultureInfo.InvariantCulture, out resetMs);
+        if (resetMs <= 0.0)
+            resetMs = 300.0;
+
+        Suite(resetMs);
         return 0;
     }
 
     // ------------------------------------------------------------------ built-in suite
 
-    private static void Suite()
+    private static void Suite(double resetMs)
     {
-        Console.WriteLine("== uniform gaps (R = 300ms): one finger / hands take turns / roll ==");
-        double[] gaps = { 100, 150, 151, 200, 250, 300, 301, 400, 600 };
+        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "== uniform gaps (R = {0:F0}ms): one finger / hands take turns / roll ==", resetMs));
+        double[] gaps = { 50, 75, 76, 100, 150, 151, 200, 300, 400 };
         foreach (double g in gaps)
         {
             Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
                 "g={0,4:F0}ms  inner {1,-18} outer {2}",
-                g, Pattern(Repeat(g, 16), 300, false), Pattern(Repeat(g, 16), 300, true)));
+                g, Pattern(Repeat(g, 16), resetMs, false), Pattern(Repeat(g, 16), resetMs, true)));
         }
 
         Console.WriteLine();
-        Console.WriteLine("== figures, R = 300ms (each row: one cycle's worth of gaps) ==");
+        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "== figures, R = {0:F0}ms (each row: one cycle's worth of gaps) ==", resetMs));
         double[][] figures =
         {
             new double[] { 100, 100, 200 },
+            new double[] { 50, 50, 100 },
             new double[] { 100, 100, 300 },
             new double[] { 125, 125, 250 },
             new double[] { 200, 200, 400 },
-            new double[] { 250, 250, 500 },
             new double[] { 100, 100, 100, 100 },
             new double[] { 50, 400 },
         };
@@ -68,21 +78,22 @@ internal static class TimeResetCheck
                 head += (head.Length > 0 ? "+" : "") + g.ToString("F0", CultureInfo.InvariantCulture);
             Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
                 "[{0}]ms  inner {1,-18} outer {2}", head,
-                Pattern(Figure(figure, 24), 300, false), Pattern(Figure(figure, 24), 300, true)));
+                Pattern(Figure(figure, 24), resetMs, false), Pattern(Figure(figure, 24), resetMs, true)));
         }
 
         Console.WriteLine();
-        Console.WriteLine("== holds, R = 300ms (head keeps the tail on its lane) ==");
-        Hold("single hold head on the roll", SingleHold(), false);
-        Hold("single hold head on the roll", SingleHold(), true);
-        Hold("chained holds share one lane", ChainedHold(), false);
-        Hold("chained holds share one lane", ChainedHold(), true);
+        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "== holds, R = {0:F0}ms (head keeps the tail on its lane) ==", resetMs));
+        Hold("single hold head on the roll", SingleHold(), false, resetMs);
+        Hold("single hold head on the roll", SingleHold(), true, resetMs);
+        Hold("chained holds share one lane", ChainedHold(), false, resetMs);
+        Hold("chained holds share one lane", ChainedHold(), true, resetMs);
     }
 
-    private static void Hold(string what, List<Note> notes, bool outer)
+    private static void Hold(string what, List<Note> notes, bool outer, double resetMs)
     {
-        string lanes = Lanes(notes, 300, outer);
-        TimeResetPlanner.Result r = TimeResetPlanner.Assign(notes, 300, outer, true);
+        string lanes = Lanes(notes, resetMs, outer);
+        TimeResetPlanner.Result r = TimeResetPlanner.Assign(notes, resetMs, outer, true);
         string check = "ok";
         for (int i = 1; i < notes.Count; i++)
             if (notes[i - 1].HoldSeconds > 0.0 && notes[i].Lane != notes[i - 1].Lane)
