@@ -17,3 +17,5 @@ LaneReader/tools/*.exe
 # its own uncommitted local edits. It is maintained as a separate repository:
 # commit AdoFalling changes from inside AdoFalling/, not from here.
 AdoFalling/
+
+dist/
