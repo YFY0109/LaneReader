@@ -125,6 +125,13 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 ---
 
+### `DoublePressMerge.cs` — 双押合并（三种手法共用）
+
+间隔小于阈值的两颗音当作一次双押，后一颗移到和前一颗同一时刻。与手指分配无关，所以在
+三种手法之后统一跑。详见 §19。
+
+---
+
 ### `NoteImage.cs` — 自定义音符贴图
 
 从磁盘读 png/jpg 当音符画，带热重载与失败状态显示。详见 §16。
@@ -1058,6 +1065,13 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   判回主手），头落在主轮的 hold 从尾音起算，长条后那颗音因此从 J/K 变成 F/D。
   复测：均匀间隔三档与 100+100+200 / 50+50+100 / 100×4 / 50+400 全部未变，
   新增用例 80+150 → JKFD、80+220 → JKJK。dll 仍 72,704 字节。
+- 2026-10-11（1.0.3）：新增**双押合并**（`DoublePressMerge.cs`，`MergeRollMs` 默认 50ms，
+  面板放在「排键（手序）」的**公共位置** —— 三种手法共用，不是时间重置专有）：间隔小于它的
+  两颗音当作双押，后一颗移到和前一颗同一时刻；只移按键，长条尾音不动。新增
+  **「刷新手序」**按钮，并且每次重算前先 `RestoreChartTimes()` 把音符时间还原成谱面自己的
+  （否则重算会吃到上一次合并过的 0 间隔 —— 那在拆手序里会被读成一个巨大的窗口）。
+  面板手序介绍改成只显示当前模式，设置行之间加空行（`RowGap`，加在 Toggle/Slider/
+  IntSlider/ColourRow/ColourToggle 的末尾）。§19 是新的一节。dll 74,240 字节。
 
 ## 18. 时间重置法（`TimeResetPlanner.cs`，2026-10-11）
 
@@ -1092,6 +1106,7 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 - **长条**：尾音永远取头的手指（"尾音在哪儿就当成在哪"），并且**参照时间推进到尾音时刻**
   —— 手指到松手才空出来。链式长条（尾即下一个的头）自动整段同一条轨道。头允许排在 K/D
   （用户选的方案），外轮换完之后再把头的最终手指同步给尾音。
+- **双押合并**不在这支里：`DoublePressMerge` 是三种手法共用的后处理（§19），在状态机与外轮之后跑。
 - **边界容差** `RoundOff = 1e-9` 秒：时间是 double，间隔正好等于 R 或 R/2 时
   `0.45 - 0.3 = 0.15000000000000002`，判定在边界两边逐音乱翻（离线实测 g = 150ms 打出来是
   `JKFJKFJFDJKFJKJK`，加 1ns 容差后干净地是 `JKFD`）。`HandPlanner.RoundOff` 同因同值。
@@ -1127,19 +1142,55 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 链式长条 内轮 `JKKKF` / 外轮 `KJJJF`。（主轮改成比"上一个音"之后，长条后面那颗音
 从 J/K 变成 F/D —— 刚松手 50ms，算还在快速段里。）
 
+双押合并实测（`DoublePressMerge`，R = 165ms、merge = 50ms，写成"时刻ms+手指"）：
+
+| 音型 | 合并后 |
+|---|---|
+| 50+400 | `0J 0K 450J 450K 900J 900K …`（5 处） |
+| 40+40+40 | `0J 0K 80F 80D 160J 160K …`（5 处） |
+| 100+100+200 | 不变（间隔 100/200ms > 50ms） |
+
 ### 验证方式
 
 ```
 cd LaneReader\tools
 csc /nologo /target:exe /langversion:5 /out:TimeResetCheck.exe TimeResetCheck.cs `
     ..\src\LaneReader\TimeResetPlanner.cs ..\src\LaneReader\FingeringPlanner.cs
-TimeResetCheck.exe 165                 # 内置表（均匀间隔 / 音型 / 长条；不填按 300）
+TimeResetCheck.exe 165                 # 内置表（均匀间隔 / 音型 / 长条 / 双押合并；不填按 300）
 TimeResetCheck.exe <dump> 165 [inner]  # 参考宏 dump（TSX/TS 行）整首走一遍
 ```
 
 面板：「排键（手序）」→ 手法按钮点三下循环 原版 → 拆手序 → **时间重置法**；选中它有
 「主手重置间隔 (毫秒)」和「轮指方向」。日志行：
 `time reset: 165ms reset, inner roll, D=.. F=.. J=.. K=.., N presses (M hold tails), X hand switches, <手指序列>`。
+
+## 19. 双押合并（`DoublePressMerge.cs`，三种手法共用，1.0.3）
+
+间隔小于 `MergeRollMs`（默认 50ms，0 = 关）的两颗音当作一次双押：后一颗被移到和前一颗
+**同一时刻**，画在同一行上。它改的是"这个谱看起来是什么样"，不是"用哪根手指"，所以三种手法
+一律套用 —— `Plugin.Tick` 在 planner 之后调用，日志行
+`double presses: N note(s) pulled level with the note before them (merge 50ms)`。
+
+- **只移按键**：长条的尾音是同一个键的松手，必须留在长条末端（长条的"下一颗音"正好是它的
+  尾音，所以也不会弄坏任何长条的长度）。
+- **判定要带 `RoundOff`**：时间是 double，`0.95 - 0.9 = 0.050000000000000044 > 0.05` ——
+  第一版没带，离线 5 处只合了 2 处。
+- 实测见 §18 末尾那张表（`50+400`、`40+40+40` 各 5 处；`100+100+200` 不受影响）。
+
+### 刷新手序 + 重算的输入（同一次提交）
+
+「排键（手序）」里的**「刷新手序」**按钮把 `_planFingerprint` 置成 NaN，下一帧强制重算。
+但重算必须从**谱面自己的时间**出发：合并已经改过 `Note.HitTime`，直接拿改过的时间再排，
+0 间隔在拆手序里会被读成一个巨大的窗口（degree 0 累加不到 180，窗口一路吞下去）。所以
+`Plugin.RestoreChartTimes()` 在每次重算前把时间还原 —— 原始时间按 `Chart.Generation` 缓存，
+只在换谱时重新抓。日志行 `plan: put N note(s) back on the chart's own time before re-planning`。
+
+### 面板排版
+
+- 手序介绍改成**只显示当前模式**那一段（三种全列太长）；ReADOFAIMacro 的外链只在拆手序下出现。
+- 「双押合并」滑块放在「排键（手序）」的公共位置（三种手法共用）。
+- 设置行之间加空行：`RowGap`（6px）加在 `Toggle` / `Slider` / `IntSlider` / `ColourRow` /
+  `ColourToggle` 的末尾，一处改动覆盖整个面板。
 
 
 > 长按的验收要点（本机谱面数据里如果没有 hold 砖，日志里不会有 `chart holds:` 那行）：

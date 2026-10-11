@@ -90,6 +90,26 @@ internal static class TimeResetCheck
         Hold("single hold head on the roll", SingleHold(), true, resetMs);
         Hold("chained holds share one lane", ChainedHold(), false, resetMs);
         Hold("chained holds share one lane", ChainedHold(), true, resetMs);
+
+        Console.WriteLine();
+        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "== double-press merge (DoublePressMerge), R = {0:F0}ms, merge = 50ms ==", resetMs));
+        MergeDemo("50+400", new double[] { 50, 400 }, resetMs, 50.0);
+        MergeDemo("40+40+40", new double[] { 40, 40, 40 }, resetMs, 50.0);
+        MergeDemo("100+100+200", new double[] { 100, 100, 200 }, resetMs, 50.0);
+        MergeDemo("50+400 merge off", new double[] { 50, 400 }, resetMs, 0.0);
+    }
+
+    private static void MergeDemo(string what, double[] gapsMs, double resetMs, double mergeMs)
+    {
+        List<Note> notes = Figure(gapsMs, 10);
+        TimeResetPlanner.Assign(notes, resetMs, false, false);          // lanes first
+        int merged = DoublePressMerge.Apply(notes, mergeMs, false);      // then the double presses
+        var sb = new StringBuilder();
+        foreach (Note note in notes)
+            sb.AppendFormat(CultureInfo.InvariantCulture, "{0:F0}{1} ", note.HitTime * 1000.0, Letter(note.Lane));
+        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "{0,-18} {1}  (merged {2})", what, sb.ToString().Trim(), merged));
     }
 
     private static void Hold(string what, List<Note> notes, bool outer, double resetMs)

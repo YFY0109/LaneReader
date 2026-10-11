@@ -399,23 +399,42 @@ namespace LaneReader
                     Cfg.FingeringMode = (Cfg.FingeringMode + 1) % 3;
                 GUILayout.EndHorizontal();
                 GUILayout.Label("点一下换一种，三种手法没有绝对好坏：");
-                GUILayout.Label("· AdoFalling 原版：只看相邻音的间隔，密集段整条手序就是楼梯，");
-                GUILayout.Label("  处理不了双押（同时的两颗音只能挤在一起）。");
-                GUILayout.Label("· 拆手序（移植自 ReADOFAIMacro，MIT）：基于节拍、依赖原曲 BPM，");
-                GUILayout.Label("  强拍给主手、弱拍给副手，手序最合理，双押和轮指都能处理；");
-                GUILayout.Label("  但三连音交互会很灾难——窗口按 180° 切，三条 1/3 拍的音只在");
-                GUILayout.Label("  归一化缩放正好为 1 时才凑成一个窗口，否则边界落进组里，整段错位。");
-                GUILayout.Label("· 时间重置法：和谱面 BPM 完全无关，只有「换手时间」一个概念，");
-                GUILayout.Label("  各种奇怪节拍都能处理；但每次一定从主手开始，不看强弱拍、");
-                GUILayout.Label("  不考虑节奏，只考虑怎么让手指舒服。");
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("参考实现 ReADOFAIMacro（GitHub）", GUILayout.Width(240f)))
+                if (Cfg.FingeringMode == 1)
                 {
-                    try { Application.OpenURL(ReferenceMacro); }
-                    catch (Exception ex) { Logger.Log("OpenURL failed: " + ex.Message); }
+                    GUILayout.Label("· 拆手序（移植自 ReADOFAIMacro，MIT）：基于节拍、依赖原曲 BPM，");
+                    GUILayout.Label("  强拍给主手、弱拍给副手，手序最合理，双押和轮指都能处理；");
+                    GUILayout.Label("  但三连音交互会很灾难——窗口按 180° 切，三条 1/3 拍的音只在");
+                    GUILayout.Label("  归一化缩放正好为 1 时才凑成一个窗口，否则边界落进组里，整段错位。");
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button("参考实现 ReADOFAIMacro（GitHub）", GUILayout.Width(240f)))
+                    {
+                        try { Application.OpenURL(ReferenceMacro); }
+                        catch (Exception ex) { Logger.Log("OpenURL failed: " + ex.Message); }
+                    }
+                    GUILayout.Label(ReferenceMacro);
+                    GUILayout.EndHorizontal();
                 }
-                GUILayout.Label(ReferenceMacro);
+                else if (Cfg.FingeringMode == 2)
+                {
+                    GUILayout.Label("· 时间重置法：和谱面 BPM 完全无关，只有「换手时间」一个概念，");
+                    GUILayout.Label("  各种奇怪节拍都能处理；但每次一定从主手开始，不看强弱拍、");
+                    GUILayout.Label("  不考虑节奏，只考虑怎么让手指舒服。");
+                }
+                else
+                {
+                    GUILayout.Label("· AdoFalling 原版：只看相邻音的间隔，密集段整条手序就是楼梯，");
+                    GUILayout.Label("  处理不了双押（同时的两颗音只能挤在一起）。");
+                }
+
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("刷新手序", GUILayout.Width(160f)))
+                    _planFingerprint = double.NaN;
+                GUILayout.Label("改了设置或换谱后手序没更新时点它。");
                 GUILayout.EndHorizontal();
+
+                Slider("双押合并 (毫秒)", ref Cfg.MergeRollMs, 0f, 150f, "F0");
+                GUILayout.Label("间隔小于它的两颗音当作双押：后一颗移到和前一颗同一行；0 = 关。");
+                GUILayout.Label("三种手法都有效果；长条的尾音不参与（它必须留在长条末端）。");
 
                 if (Cfg.FingeringMode == 1)
                 {
@@ -585,6 +604,12 @@ namespace LaneReader
         private const float SliderWidth = 200f;
         private const float NumberWidth = 66f;
 
+        /// <summary>
+        /// Blank line left under every setting row. The panel is a long list of one-row controls and
+        /// they ran together without it.
+        /// </summary>
+        private const float RowGap = 6f;
+
         /// <summary>How far each nesting level of the options pushes its contents right.</summary>
         private const float IndentWidth = 16f;
 
@@ -651,6 +676,7 @@ namespace LaneReader
             GUILayout.Label(label, GUILayout.Width(LabelWidth));
             value = GUILayout.Toggle(value, value ? "开" : "关", GUILayout.Width(80f));
             GUILayout.EndHorizontal();
+            GUILayout.Space(RowGap);
         }
 
         /// <summary>
@@ -693,6 +719,7 @@ namespace LaneReader
             }
 
             GUILayout.EndHorizontal();
+            GUILayout.Space(RowGap);
         }
 
         /// <summary>A slider over whole numbers, for settings that are stored as an int.</summary>
@@ -728,6 +755,7 @@ namespace LaneReader
             }
 
             GUILayout.EndHorizontal();
+            GUILayout.Space(RowGap);
         }
 
         /// <summary>Numbers being typed right now, keyed by the field that owns them.</summary>
@@ -770,6 +798,7 @@ namespace LaneReader
             }
 
             GUILayout.EndHorizontal();
+            GUILayout.Space(RowGap);
         }
 
         private static float Channel(string axis, float v)
@@ -785,6 +814,7 @@ namespace LaneReader
             GUILayout.Label(label, GUILayout.Width(126f));
             value = GUILayout.Toggle(value, value ? "四轨单独" : "四轨统一", GUILayout.Width(90f));
             GUILayout.EndHorizontal();
+            GUILayout.Space(RowGap);
         }
 
         private static string Hex(Color c)
@@ -938,19 +968,33 @@ namespace LaneReader
             // toggle that changes the plan but not the fingerprint would leave the old lanes in place.
             double fingerprint = Chart.Generation * 1000000.0 + Cfg.RollWindowMs * 100.0
                                  + Cfg.FingeringMode * 100000000.0 + Cfg.MaxHardResistBpm
-                                 + Cfg.ResetMs * 10.0
+                                 + Cfg.ResetMs * 10.0 + Cfg.MergeRollMs * 100.0
                                  + (Cfg.OuterRoll ? 1.0 : 2.0)
                                  + (Cfg.HoldSupport ? 4.0 : 8.0);
             if (fingerprint == _planFingerprint)
                 return;
 
             _planFingerprint = fingerprint;
+
+            // Every plan starts from the chart's own times: the double-press merge moves notes, so
+            // re-planning off what the last plan left behind would finger the merged times - a zero
+            // gap reads as one huge window in the hand-split planner. This is also what makes the
+            // panel's refresh button reproduce the same fingering.
+            RestoreChartTimes();
+
             if (Cfg.FingeringMode == 2)
                 ApplyTimeReset();
             else if (Cfg.FingeringMode == 1)
                 ApplyHandSplit();
             else
                 ApplyAdoFalling();
+
+            // Not a fingering decision but a reading of the chart, so it runs for all three.
+            int merged = DoublePressMerge.Apply(Chart.Notes, Cfg.MergeRollMs, Cfg.HoldSupport);
+            if (merged > 0)
+                Logger.Log(string.Format(
+                    "double presses: {0} note(s) pulled level with the note before them (merge {1:F0}ms)",
+                    merged, Cfg.MergeRollMs));
 
             ForceHoldTails();
         }
@@ -1003,6 +1047,46 @@ namespace LaneReader
                 Chart.Count, _plan.Rolls, _plan.Taps, _plan.WindowMs,
                 _plan.LaneUse[(int)Finger.LeftMiddle], _plan.LaneUse[(int)Finger.LeftIndex],
                 _plan.LaneUse[(int)Finger.RightIndex], _plan.LaneUse[(int)Finger.RightMiddle]));
+        }
+
+        /// <summary>
+        /// The note times the chart was read with, and the generation they came from. The double-press
+        /// merge moves notes, so re-planning has to start from these again rather than from whatever
+        /// the last plan left in the notes.
+        /// </summary>
+        private static double[] _chartTimes;
+        private static int _chartTimesGeneration = -1;
+
+        private static void RestoreChartTimes()
+        {
+            IList<Note> notes = Chart.Notes;
+
+            if (Chart.Generation != _chartTimesGeneration)
+            {
+                _chartTimesGeneration = Chart.Generation;
+                _chartTimes = new double[notes.Count];
+                for (int i = 0; i < notes.Count; i++)
+                    _chartTimes[i] = notes[i].HitTime;
+                return;
+            }
+
+            if (_chartTimes == null || _chartTimes.Length != notes.Count)
+                return;
+
+            int moved = 0;
+            for (int i = 0; i < notes.Count; i++)
+            {
+                if (notes[i].HitTime == _chartTimes[i])
+                    continue;
+
+                Note note = notes[i];
+                note.HitTime = _chartTimes[i];
+                notes[i] = note;
+                moved++;
+            }
+
+            if (moved > 0)
+                Logger.Log("plan: put " + moved + " note(s) back on the chart's own time before re-planning");
         }
 
         /// <summary>Panel label for a fingering mode.</summary>

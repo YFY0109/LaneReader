@@ -50,6 +50,9 @@ namespace LaneReader
     /// press trades fingers with the press before it, which puts the outer finger down first
     /// (K J D F rather than J K F D). Because the roll pair is settled inside a hand, this only
     /// changes which of that hand's two fingers leads.
+    ///
+    /// Double presses are not handled here: <see cref="DoublePressMerge"/> pulls a near-simultaneous
+    /// pair level for all three planners alike, after this one has finished.
     /// </summary>
     public sealed class TimeResetPlanner
     {

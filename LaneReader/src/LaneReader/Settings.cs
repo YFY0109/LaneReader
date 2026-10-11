@@ -418,6 +418,18 @@ namespace LaneReader
         public float ResetMs = 165f;
 
         /// <summary>
+        /// Double-press merge, in milliseconds, for the time-reset planner: a roll pair closer
+        /// together than this is read as both fingers going down at once, so the roll note is pulled
+        /// level with the note before it and the two are drawn on one row. Only used while
+        /// <see cref="FingeringMode"/> is 2. 0 turns it off.
+        ///
+        /// Only roll notes (the planner's K and D) can move, and only presses: a hold's release is
+        /// the same key as its head and has to stay where the bar ends. 50 ms is about a 1/32 note
+        /// at 150 BPM, i.e. near-simultaneous in practice.
+        /// </summary>
+        public float MergeRollMs = 50f;
+
+        /// <summary>
         /// Roll direction: true starts each hand on its middle finger (K J D F, the "outer"
         /// roll), false on its index finger (J K F D, the "inner" roll).
         /// </summary>
