@@ -65,6 +65,8 @@ internal static class TimeResetCheck
         {
             new double[] { 100, 100, 200 },
             new double[] { 50, 50, 100 },
+            new double[] { 80, 150 },
+            new double[] { 80, 220 },
             new double[] { 100, 100, 300 },
             new double[] { 125, 125, 250 },
             new double[] { 200, 200, 400 },

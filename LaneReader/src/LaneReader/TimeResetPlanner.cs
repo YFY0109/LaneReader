@@ -32,13 +32,14 @@ namespace LaneReader
     ///     main hand,  d > R          -> main hand   (slow: one finger can keep tapping)
     ///     main hand,  R/2 < d <= R   -> off hand    (the hands take the strong and weak beats)
     ///     main hand,  d <= R/2       -> main roll   (too fast for one finger, same hand rolls)
-    ///     main roll,  d > R          -> main hand   (the fast passage is over)
+    ///     main roll,  d > R          -> main hand   (the passage is over)
     ///     main roll,  d <= R         -> off hand    (still in it, hand over)
     ///     off hand,   dOff <= R/2 or dMain <= R -> off roll   (the off hand has to roll too)
     ///     off hand,   otherwise      -> main hand
     ///
-    /// where d is measured from the last main-hand press and dOff/dMain from the last off-hand and
-    /// last main-hand press respectively. Every boundary is inclusive.
+    /// where d is the gap from the press before this one - on the main roll that is the roll note
+    /// itself, not the main note the roll answered - and dOff/dMain are measured from the last
+    /// off-hand and last main-hand press. Every boundary is inclusive.
     ///
     /// A hold needs no special case beyond one: the note a hold ends on is the same key as the
     /// head, so it takes the head's finger and the clock moves on to it - the finger is only free
@@ -122,6 +123,7 @@ namespace LaneReader
             int[] finger = new int[count];
             double lastMain = double.NegativeInfinity;
             double lastOff = double.NegativeInfinity;
+            double previous = double.NegativeInfinity;
             int state = -1;   // nothing decided yet
 
             for (int i = 0; i < count; i++)
@@ -150,8 +152,10 @@ namespace LaneReader
                 }
                 else if (state == MainRoll)
                 {
-                    // Measured from the main-hand press before the roll - the note the roll answered.
-                    f = (t - lastMain) > reset + RoundOff ? MainHand : OffHand;
+                    // Measured from the press before this one: the roll note itself, not the main
+                    // note the roll answered. (If that roll note is a hold, the clock has already
+                    // moved to its release, which is the note the finger was still down on.)
+                    f = (t - previous) > reset + RoundOff ? MainHand : OffHand;
                 }
                 else
                 {
@@ -169,6 +173,7 @@ namespace LaneReader
 
                 state = f;
                 finger[i] = f;
+                previous = t;
             }
 
             if (outerRoll)

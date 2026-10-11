@@ -1052,6 +1052,9 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
   **`ResetMs` 默认 300 → 165ms**；`Info.json` 与安装说明升到 1.0.1，README 和 §18 的实测表
   按 R = 165ms 跑（均匀间隔分界 82/165ms；50+50+100 锁成 JKF，100+100+200 是 JFJ）。
   这一版中间改过两次默认值（150 → 200 → 165），都直接改在同一个版号里，不另发版本。
+  另外把**主轮那支的参照从"上上个音（那颗主手）"改成"上一个音（主轮那一下）"**：
+  一次快速双击后隔 150ms 的音现在仍换手（旧规则按"距上上个音 230ms"判回主手），
+  头落在主轮的 hold 从尾音起算，长条后那颗音因此从 J/K 变成 F/D。
   dll 仍 72,704 字节。
 
 ## 18. 时间重置法（`TimeResetPlanner.cs`，2026-10-11）
@@ -1072,13 +1075,14 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 | 主手 | d > R | J（慢：一根指头能一直点） |
 | 主手 | R/2 < d ≤ R | F（强拍主、弱拍副） |
 | 主手 | d ≤ R/2 | K（一只手来不及，同手轮指） |
-| 主轮 | d > R | J（快速段结束，回落） |
+| 主轮 | d > R | J（这一段过去了，回落） |
 | 主轮 | d ≤ R | F（还在快速段里，换手） |
 | 副手 | dOff ≤ R/2 **或** dMain ≤ R | D（副手也得轮） |
 | 副手 | 否则 | J |
 
-`d` = 本次 − `lastMain`（主轮那一行比的因此是"上上个音"）；`dOff` / `dMain` = 本次 −
-`lastOff` / `lastMain`。第二条 OR 只在 F 是**主轮分支**产生时可能生效——F 来自主手分支时
+`d` = 本次 − **上一个音**（主轮那一行比的就是主轮那一下本身，不是它回应过的那颗主手音；
+长按挡在中间时"上一个音"是尾音，手指松手才算空出来，所以头落在主轮的 hold 从尾音起算）；
+`dOff` / `dMain` = 本次 − `lastOff` / `lastMain`。第二条 OR 只在 F 是**主轮分支**产生时可能生效——F 来自主手分支时
 `dMain = dPrev + dOff > R/2 + dOff`，要它 ≤ R 就必须 `dOff < R/2`，第一条早已成立。
 
 - **外轮**是收尾的一遍扫描：每个 K/D 和它**前一个按键**交换手指 ⇒ 外侧指先落（K J D F）。
@@ -1105,6 +1109,8 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 | 音型 (ms) | 内轮 | 外轮 |
 |---|---|---|
 | 50+50+100（更快） | JKF 循环 | KJF 循环 |
+| 80+150 | JKFD 循环 | KJDF 循环 |
+| 80+220 | JKJK 循环 | KJKJ 循环 |
 | 100+100+200 | JFJ 循环 | JFJ 循环 |
 | 100+100+300 | JFJ 循环 | JFJ 循环 |
 | 125+125+250 | JFJ 循环 | JFJ 循环 |
@@ -1115,8 +1121,9 @@ Unity 6 给 `UnityEngine.ImageConversion` 加了一个 `LoadImage(Texture2D, Rea
 最后一行要知道：一趟「快 50ms 双击、再隔 400ms」的音型，主轮之后 `d > R` 就回落主手，
 所以副手一直闲着。要它换手得把 R 调大（让 400ms 落进 R 以内）。
 
-长条实测（`ok` = 每颗尾音都跟在头的轨道上）：单个长条 内轮 `JKKJKF` / 外轮 `KJJKJF`；
-链式长条 内轮 `JKKKJ` / 外轮 `KJJJJ`。
+长条实测（`ok` = 每颗尾音都跟在头的轨道上）：单个长条 内轮 `JKKFDJ` / 外轮 `KJJDFJ`；
+链式长条 内轮 `JKKKF` / 外轮 `KJJJF`。（主轮改成比"上一个音"之后，长条后面那颗音
+从 J/K 变成 F/D —— 刚松手 50ms，算还在快速段里。）
 
 ### 验证方式
 
