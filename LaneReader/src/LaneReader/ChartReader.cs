@@ -293,6 +293,10 @@ namespace LaneReader
                         "missing types: levelMaker={0} floor={1} conductor={2} controller={3}",
                         lm != null, floor != null, cond != null, ctrl != null);
                     _reflectionFailed = true;
+                    // Loud on purpose: with no reader there is no chart, and with no chart every
+                    // path below returns early - so without this line a broken reflection setup
+                    // looks exactly like "the mod does nothing". Once only; it never succeeds after.
+                    Plugin.Log("chart reader disabled: " + _diagnostic);
                     return;
                 }
 
@@ -358,6 +362,7 @@ namespace LaneReader
                 {
                     _diagnostic = "core members missing (instance / listFloors)";
                     _reflectionFailed = true;
+                    Plugin.Log("chart reader disabled: " + _diagnostic);
                     return;
                 }
                 if (_ctrlPaused == null)
@@ -370,6 +375,7 @@ namespace LaneReader
             {
                 _diagnostic = "reflection error: " + ex.Message;
                 _reflectionFailed = true;
+                Plugin.Log("chart reader disabled: " + _diagnostic);
             }
         }
 

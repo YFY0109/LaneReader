@@ -58,10 +58,20 @@ namespace LaneReader
         private static bool _hidden;
         private static float _nextLogAt;
         private static bool _guiLogged;
-        private static bool _tickLogged;
-        private static bool _drawLogged;
+        /// <summary>Last value of the "suppressed" gate, so its log line only fires when it changes.</summary>
+        private static bool _suppressed;
         /// <summary>Last "no chart to draw" reason already written to the log; stops the idle line repeating.</summary>
         private static string _idleDiag;
+
+        // ---- hook liveness, read by OverlayWatchdog ----
+        /// <summary>Frame the Harmony Update postfix last ran in.</summary>
+        internal static int HookTickFrame = -1;
+        /// <summary>Frame the Harmony OnGUI postfix last ran in.</summary>
+        internal static int HookDrawFrame = -1;
+        /// <summary>Unscaled time the Harmony Update postfix last ran at. Stale = hook is dead.</summary>
+        internal static float HookTickTime = -999f;
+        /// <summary>Unscaled time the Harmony OnGUI postfix last ran at.</summary>
+        internal static float HookDrawTime = -999f;
 
         /// <summary>Degrees the fun spin has accumulated; reset whenever the mode is off.</summary>
         private static float _spinAngle;
@@ -120,6 +130,10 @@ namespace LaneReader
                 Logger.Log("harmony patch failed - overlay will not draw: " + ex);
             }
 
+            // Not "in case": this is the answer to a player whose panel opened and whose overlay
+            // never drew. See OverlayWatchdog - it is inert while the hooks above are firing.
+            OverlayWatchdog.Install();
+
             Logger.Log("LaneReader ready - reads the live chart, no file needed");
             return true;
         }
@@ -171,6 +185,7 @@ namespace LaneReader
         {
             Chart.Reset();
             _planFingerprint = double.NaN;
+            OverlayWatchdog.Remove();
             if (Harmony != null)
             {
                 try { Harmony.UnpatchAll("com.local.lanereader"); }
@@ -972,15 +987,6 @@ namespace LaneReader
             if (Cfg == null)
                 return;
 
-            // One line per session, before any gate below can swallow it. "the panel opens but
-            // nothing is drawn" is otherwise indistinguishable, from a log, between "the hook
-            // never fired" and "the hook fired and correctly drew nothing".
-            if (!_tickLogged)
-            {
-                _tickLogged = true;
-                Logger.Log("overlay tick hook alive (AsyncInputManager.Update postfix)");
-            }
-
             MeasureFrameRate();
 
             // The fun spin is integrated here rather than read from unscaledTime so that changing the
@@ -996,7 +1002,17 @@ namespace LaneReader
                 Logger.Log("overlay " + (_hidden ? "hidden" : "shown"));
             }
 
-            if (!Cfg.Enabled || _hidden)
+            // The other silent gate. Logged on change only: this is a state, and the whole point
+            // of the line is to say "the mod is running and deliberately not drawing".
+            bool suppressed = !Cfg.Enabled || _hidden;
+            if (suppressed != _suppressed)
+            {
+                _suppressed = suppressed;
+                Logger.Log(suppressed
+                    ? "overlay suppressed: Enabled=" + Cfg.Enabled + " hidden=" + _hidden
+                    : "overlay resumed");
+            }
+            if (suppressed)
                 return;
 
             bool log = Cfg.DebugLog && Time.unscaledTime >= _nextLogAt;
@@ -1373,12 +1389,6 @@ namespace LaneReader
         {
             if (Cfg == null)
                 return;
-
-            if (!_drawLogged)
-            {
-                _drawLogged = true;
-                Logger.Log("overlay draw hook alive (AsyncInputManager.OnGUI postfix)");
-            }
 
             if (!Cfg.Enabled || _hidden)
                 return;

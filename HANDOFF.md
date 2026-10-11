@@ -65,12 +65,12 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 
 ---
 
-## 4. 架构：十个文件
+## 4. 架构：十二个文件
 
 ### `Plugin.cs` — 入口 + 渲染 + 设置面板
 
 - `public static bool Load(ModEntry)` — UMM 入口
-- Harmony 补丁挂两个游戏方法（见 `HarmonyHooks.cs`）
+- Harmony 补丁挂两个游戏方法（见 `HarmonyHooks.cs`），并创建兜底驱动（见 `OverlayWatchdog.cs`）
 - `Tick()` — 每帧逻辑：读谱、排键、判定状态
 - `Draw()` — 全屏渲染
 - `OnGui()` — **手写 GUILayout 设置面板**（关键，见第 6 节）
@@ -1257,11 +1257,31 @@ UMM 自己的 `Log.txt` 只有加载阶段，mod 的输出全在 Player.log）�
 
 为此 1.1.1 加了三条只用于排查的日志，都不受 `DebugLog` 影响：
 
-- `overlay tick hook alive (AsyncInputManager.Update postfix)` —— 每局一行，在 `Enabled` / `_hidden`
-  这些 return 之前打，用来区分“补丁没挂上”和“挂上了但按设计没画”。
-- `overlay draw hook alive (AsyncInputManager.OnGUI postfix)` —— 同上，OnGUI 那一侧。
+- `driver: game hooks alive (AsyncInputManager.Update / OnGUI)` —— 每局各一行，**打在 Harmony
+  postfix 里**（不是打在 `Tick`/`Draw` 里：那两个也会被下面的兜底驱动调用，打在里面对不上账）。
+- `driver: game hooks never fired - drawing from the mod's own GameObject` / `... stopped firing ...`
+  —— 兜底驱动接管时打一行。
 - `idle: <原因>` —— `DebugLog` 开着时，没谱面可画就报一次原因（同一条原因只报一次，
   菜单里不会刷屏），内容就是 `ChartReader.Diagnostic`（`waiting: scrLevelMaker.instance is null` 等）。
+- `overlay suppressed: Enabled=… hidden=…` —— `显示叠加层` 关掉或按了 F8 时打一行（状态变化才打）。
+- `chart reader disabled: <原因>` —— 反射失败（`_reflectionFailed`）时**无条件**打一行，否则
+  读不到谱面 → 后面每条路都早退 → 日志里什么都看不到。
+
+### 兜底驱动（`OverlayWatchdog.cs`，12 个源文件）
+
+原来叠加层只靠 `AsyncInputManager.Update/OnGUI` 两个 postfix。**MonoBehaviour 的 GameObject
+不激活就收不到 Update/OnGUI** —— 别人的构建、设置或别的 mod 只要让那个对象不激活，本 mod 就变成
+“设置面板能开、叠加层永远不画、日志一行都没有”，正是玩家报的现象。所以：
+
+- `Load` 里创建一个自己的 `GameObject`（`DontDestroyOnLoad`）并挂 `OverlayWatchdog`；
+  `OnUnload` 里销毁。它是我们自己的对象，Unity 一定会调。
+- postfix 每次运行都盖 `Plugin.HookTickFrame/HookTickTime`（OnGUI 同理）。兜底驱动只在
+  **这些戳记安静了 0.5 秒**之后接管；正常机器上它一个字节的活都不干。
+- Tick 走 `LateUpdate`（晚于本帧所有 Update），并且用 `HookTickFrame == Time.frameCount` 兜底，
+  保证**同一帧绝不会 Tick 两次** —— `Tick` 会按时钟推进音符，一帧两次音符就会跳。
+- 画的时候把 `GUI.depth` 设成 -1000（游戏自己的 IMGUI 用默认 0），保证叠加层压在游戏 UI 上面。
+
+临时版（给玩家单独发的）：`dist\LaneReader-1.1.1-test-overlay-driver.zip`。
 
 面板顶部也补了一行说明：叠加层只在关卡里出现，菜单/选歌/设置面板里看不到。
 再往下就是**「叠加层状态: <ChartReader.Diagnostic>」**这一行 —— 面板是玩家在“什么都没画”时

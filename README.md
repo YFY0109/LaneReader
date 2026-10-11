@@ -243,8 +243,12 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # 编译并部�
 
 - 面板顶部补一行说明：**叠加层只在关卡里出现**，菜单、选歌界面和设置面板里看不到（有不少人以为没生效）；
   下面再补一行**「叠加层状态」**，直接显示不画的原因（`waiting: scrLevelMaker.instance is null` 等）
-- 新增三条排查日志（不受「输出诊断日志」开关影响）：`overlay tick hook alive`、
-  `overlay draw hook alive`、`idle: <原因>`；用来区分「补丁没挂上」和「挂上了但按设计没画」
+- 新增**兜底驱动**（`OverlayWatchdog.cs`）：叠加层原本只靠 `AsyncInputManager.Update/OnGUI`
+  两个补丁，而 MonoBehaviour 所在的 GameObject 不激活就收不到回调 —— 那会让 mod 变成「面板能开、
+  叠加层永远不画、日志一行都没有」。现在 mod 自己创建一个 `DontDestroyOnLoad` 的 GameObject，
+  游戏那两个钩子安静 0.5 秒后由它接管（正常机器上完全不动）；接管时把 `GUI.depth` 设到游戏 UI 之上
+- 新增排查日志：`driver: game hooks alive/never fired/stopped firing`、
+  `overlay suppressed: Enabled=… hidden=…`、`idle: <原因>`、`chart reader disabled: <原因>`
 - 排查方法记在 HANDOFF §21
 
 **1.1.0**
