@@ -59,6 +59,9 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
 - 用 `csc.exe`（.NET Framework 4.0.30319）编译，`/langversion:5`（**不能用 C# 6+ 语法**）
 - 引用：`netstandard.dll` + 全部 `UnityEngine*.dll` + `Assembly-CSharp.dll` + `UnityModManager\UnityModManager.dll` + `UnityModManager\0Harmony.dll`
 - **部署前必须完全退出游戏**，否则 DLL 被占用（`user-mapped section open`）
+- 每次编译都会顺手打 release 包：`build\LaneReader-<版本>.zip`，根目录是 `LaneReader\`
+  （dll + Info.json + `lang\` + 示例图片 + 安装说明），和 UMM 的安装结构一致，
+  版本号从 `Mod\Info.json` 读。`lang\*.txt` 在这里是**覆盖**打包的（安装到游戏目录时才只在缺失时复制）
 
 ---
 

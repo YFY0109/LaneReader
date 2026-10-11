@@ -119,10 +119,14 @@
 
 ## 安装
 
-UnityModManager 已就位的前提下：
+**从 Releases 下载 `LaneReader-<版本>.zip`**，解压出来的就是 `Mods\LaneReader\`
+（`LaneReader.dll` + `Info.json` + `lang\` + 示例图片 + 安装说明），整个文件夹丢进
+`<游戏目录>\Mods\` 即可。手动装法一样：
 
-1. 把 `LaneReader.dll` 和 `Info.json` 放进 `<游戏目录>\Mods\LaneReader\`
+1. 把 `LaneReader.dll`、`Info.json`、`lang\` 放进 `<游戏目录>\Mods\LaneReader\`
 2. 启动游戏，UMM 的 mod 列表里会出现 `LaneReader (4K view)`
+
+**装之前必须完全退出游戏**（dll 会被占用）。
 
 设置面板在 UMM 的 mod 设置里（全部手写 `GUILayout`，**不依赖 UMM 的自动绘制**
 —— 那套在这台安装上对自绘面板的 mod 无效）。
@@ -139,6 +143,8 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # 编译并部�
 
 - 用 `csc.exe`（.NET Framework 4.0.30319）编译，`/langversion:5`（**不能用 C# 6+ 语法**）
 - **部署前必须完全退出游戏**，否则 DLL 被占用（`user-mapped section open`）
+- 每次编译也顺手打出 release 包 `LaneReader/build/LaneReader-<版本>.zip`（根目录是 `LaneReader\`，
+  和 UMM 的安装结构一致，版本号取自 `Info.json`）
 - 构建产物 `LaneReader/build/` 不入库
 
 ---
