@@ -63,6 +63,24 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install
   （dll + Info.json + `lang\` + 示例图片 + 安装说明），和 UMM 的安装结构一致，
   版本号从 `Mod\Info.json` 读。`lang\*.txt` 在这里是**覆盖**打包的（安装到游戏目录时才只在缺失时复制）
 
+### 发 release（踩过的坑）
+
+```powershell
+$cred = "protocol=https`nhost=github.com`n`n" | git credential fill   # password 那行就是 token
+```
+
+- **请求体必须走 `-InFile` + UTF-8 文件，不要用 `-Body <字符串>`**。这里是 Windows PowerShell
+  5.1，字符串 body 会按 ISO-8859-1 发出去，中文全部变成 `?` —— 1.1.1 第一次发布就是这么乱码的。
+- 也**不要用 `ConvertTo-Json` 包中文正文**：5.1 上 835 字符的正文会被它转成 3.8 MB 的 JSON，
+  直接被 API 以 `body is too long` 拒掉（同一个坑，两个死法）。手工拼 `{"name":"…","body":"…"}`，
+  先 `\` → `\\`、`"` → `\"`，再把换行/制表符替换成 `\n`/`\t`，用
+  `[System.IO.File]::WriteAllText($p, $json, (New-Object System.Text.UTF8Encoding($false)))` 落盘（**无 BOM**）。
+- `Invoke-RestMethod` 记得带 `-ContentType 'application/json; charset=utf-8'`；上传资产用
+  `uploads.github.com/.../releases/<id>/assets?name=<文件名>`。
+- 装完 release 后 `git fetch origin --tags`：tag 是 API 在远端建的，本地没有。
+- 直连 github.com:443 时好时坏；本机代理（`127.0.0.1:7890`）不一定在跑，先
+  `Test-NetConnection github.com -Port 443` 再决定要不要加 `-c http.proxy=…`。
+
 ---
 
 ## 4. 架构：十二个文件
